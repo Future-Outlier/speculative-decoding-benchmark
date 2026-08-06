@@ -38,19 +38,17 @@ coincide, so the bracket is tight.
 Per domain (τ_stale/τ_fresh): math 57–60%, code 54–58%, chat 61–66% — the
 strongest domains lose the most.
 
-**Break-even analysis.** With p_hit = 1, SSD beats synchronous SD iff
-τ_stale/τ_fresh > t_verify/(t_verify+t_draft). Measured on A10:
-t_draft ≈ 7–9 ms, t_verify ≈ 36 ms → threshold ≈ **0.80–0.83**, versus
-measured **0.59**. For these one-forward block drafts the acceptance loss
-(−41%) is roughly twice the drafting latency SSD could hide (~20% of the
-cycle), so **zero-shot stale conditioning does not pay** in this setting —
-even with a perfect pre-speculation cache.
+See **[Theoretical SSD gain with these numbers](#theoretical-ssd-gain-with-these-numbers)**
+below — with these τ ratios (0.586–0.616) the best-case SSD hit path computes
+to **0.71–0.77×** of synchronous SD, i.e. a slowdown, versus the ~1.3–1.6×
+the SSD paper reports for its standalone-draft configurations.
 
 Implications:
 
 1. To make SSD work with feature-conditioned block drafts, **retrain the
    draft with lagged features** (the DeepSpec training pipeline can produce
-   exactly this) or use a feature-free draft (the SSD paper's own choice).
+   exactly this) or use a standalone draft — the configuration the SSD paper
+   reports end-to-end numbers for.
 2. `self_kv` buys almost nothing over `gap` (+0.04 / +0.13 τ): the draft's
    own mask-conditioned K/V is a poor substitute for target features.
 3. Degradation grows monotonically with hole size (`figs/tau_vs_staleness.png`),
@@ -59,6 +57,76 @@ Implications:
 More figures: `figs/alpha_k.png` (per-position acceptance),
 `figs/pmf.png` (committed-length distribution — the fan-out planning input),
 `figs/rank_cdf.png` (correction-token top-F coverage — the p_hit driver).
+
+## Theoretical SSD gain with these numbers
+
+**Model.** Per round, synchronous SD commits τ_fresh tokens in t_verify+t_draft.
+An SSD hit commits τ_stale tokens in t_verify (drafting hidden behind
+verification); a miss falls back to a JIT draft (τ_fresh, full latency).
+The general break-even (p_hit = 1) is
+
+```
+R_ssd > R_sync  ⟺  τ_stale/τ_fresh > (max(t_verify, t_primary) + t_comm) / (t_verify + t_draft)
+```
+
+which reduces to the best-case threshold `t_verify/(t_verify+t_draft)` only
+under three SSD-favorable assumptions: all async draft-side work hides inside
+verification (t_primary ≤ t_verify), zero un-overlapped communication/glue
+cost, and perfect pre-speculation (p_hit = 1). This matches the SSD paper's
+Theorem 7 / Corollary 9; its Corollary 8 ("same-model SSD is never slower")
+assumes E_hit = E_SD — precisely the assumption stale conditioning breaks.
+
+**Plugging in S1 measurements** (A10, bf16, bsz=1, p50 timings):
+
+| | τ_fresh | τ_stale | t_draft | t_verify | R_sync | R_ssd (p_hit=1) | ratio |
+|---|---|---|---|---|---|---|---|
+| DFlash | 4.35 | 2.55–2.59 | 7.2 ms | 36.3 ms | 100 tok/s | 71 tok/s | **0.71×** |
+| DSpark | 4.98 | 2.94–3.07 | 9.1 ms | 36.6 ms | 109 tok/s | 84 tok/s | **0.77×** |
+
+Best-case threshold here is 0.80–0.83; measured τ_stale/τ_fresh is
+**0.586–0.616**. Because the ratio is below threshold, R_ssd(p) is
+*monotonically decreasing in p_hit* — every cache hit trades 7–9 ms of
+drafting for ~1.8–1.9 tokens of acceptance — so the optimal operating point
+degenerates to p = 0, i.e. plain synchronous SD.
+
+**Why the SSD paper wins where this loses.** Its reported configurations
+(Llama-3.1-70B + Llama-3.2-1B; Qwen3-32B + Qwen3-0.6B; Appendix B.2–B.3,
+≈1.5–1.6× over its own sync SD, ~+30% over the strongest baselines) have the
+two factors reversed: a 7-step autoregressive standalone draft makes t_draft
+~40–50% of the cycle (hideable bonus ≈ 1.7–2×), and a standalone draft keeps
+τ_stale ≈ τ_fresh. Block drafts draft in one forward, so only ~17–20% of the
+cycle is hideable — and feature conditioning then pays −41% acceptance for it.
+
+**SGLang overlap scheduling does not change this.** It overlaps *CPU*
+scheduling with GPU compute; draft and verify GPU work still serialize, so it
+is orthogonal to (and stackable with) SSD. On an optimized stack the
+t_draft/t_verify ratio approaches the draft/target memory-traffic ratio
+(≈1.32B/4.0B = 0.33 at 4B; ≈3.42B/14.8B = 0.23 at 14B), putting the
+break-even at 0.75–0.81 — still far above 0.586–0.616. Hardware-normalized it
+is worse: SSD needs an extra draft GPU (the paper's 4+1 H100 buys ~+30% for
++25% hardware; here 1+1 would buy −23~−29% for +100%).
+
+**What this proxy does and does not show** (all biases run in SSD's favor
+except the last): p_hit = 1 assumed; glue/extend/communication ignored;
+bsz = 1; and S1's every-round-stale chain τ is a *proxy* for the true
+conditional E[τ | cache hit] of an integrated SSD system — the honest
+conclusion is that this proxy predicts stale-conditioned DFlash/DSpark SSD
+cannot beat synchronous SD on single-request decode throughput, not that any
+integrated system has been measured.
+
+**Relation to the SSD paper (corrected after review).** SSD's Appendix E
+already identifies this exact mechanism for EAGLE drafts — target activations
+arrive one round late, so pre-speculation must self-condition on draft
+activations, with acceptance expected to degrade over the trailing K tokens
+(Fig. 9) — and the released engine implements it (`draft_runner.py`, draft
+activations as surrogate on the hit path, fresh recovery activations on
+miss). What the paper does *not* report is any quantitative SSD-EAGLE result
+(Appendix B.3 covers standalone drafts only; §6 calls the joint space
+"largely unexplored"). This repo's contribution is quantifying one-round-late
+conditioning for **KV-injection block drafts** (DFlash/DSpark inject target
+features into every layer's K/V — a different representation from EAGLE's
+activation input), where neither the SSD nor the DFlash/DSpark papers publish
+numbers.
 
 ## Correctness gates (why you can trust the numbers)
 
