@@ -1,0 +1,4 @@
+dflash  fresh-vs-gap      dtau=+2.161  95%CI [+2.007, +2.318]
+dflash  fresh-vs-self_kv  dtau=+2.083  95%CI [+1.935, +2.239]
+dspark  fresh-vs-gap      dtau=+2.296  95%CI [+2.155, +2.442]
+dspark  fresh-vs-self_kv  dtau=+2.144  95%CI [+2.002, +2.293]

@@ -1,0 +1,112 @@
+{
+  "rounds": 7017,
+  "samples": 96,
+  "tau": 3.1683,
+  "tau_analytic": 3.1692,
+  "verify_rate": 0.3966,
+  "accept_rate_at_k": [
+    0.5792,
+    0.436,
+    0.3367,
+    0.2659,
+    0.2245,
+    0.1813,
+    0.1504
+  ],
+  "committed_hist": [
+    0,
+    2959,
+    1005,
+    699,
+    492,
+    292,
+    304,
+    214,
+    1052
+  ],
+  "committed_pmf": [
+    0.0,
+    0.42169,
+    0.14322,
+    0.09962,
+    0.07012,
+    0.04161,
+    0.04332,
+    0.0305,
+    0.14992
+  ],
+  "recovery_kinds": {
+    "correction": 5945,
+    "bonus": 1052,
+    "eos": 20
+  },
+  "correction_rank_cdf": {
+    "top1": 0.0,
+    "top2": 1.0,
+    "top4": 1.0,
+    "top8": 1.0,
+    "top16": 1.0
+  },
+  "tau_by_staleness_tokens": {
+    "0": {
+      "n": 96,
+      "tau": 5.239583333333333
+    },
+    "1": {
+      "n": 2933,
+      "tau": 3.8949880668257757
+    },
+    "2": {
+      "n": 994,
+      "tau": 3.249496981891348
+    },
+    "3": {
+      "n": 688,
+      "tau": 2.9040697674418605
+    },
+    "4": {
+      "n": 487,
+      "tau": 2.593429158110883
+    },
+    "5": {
+      "n": 287,
+      "tau": 2.21602787456446
+    },
+    "6": {
+      "n": 296,
+      "tau": 2.27027027027027
+    },
+    "7": {
+      "n": 208,
+      "tau": 1.7836538461538463
+    },
+    "8": {
+      "n": 1028,
+      "tau": 2.0768482490272375
+    }
+  },
+  "t_propose_ms_p50": 8.155,
+  "t_round_ms_p50": 43.454,
+  "t_round_ms_p90": 45.768,
+  "output_tokens": 22120,
+  "tokens_per_s": 69.78,
+  "algo": "dspark",
+  "mode": "self_kv",
+  "stage": "s1t0",
+  "target": "Qwen/Qwen3-4B",
+  "draft": "deepseek-ai/dspark_qwen3_4b_block7",
+  "target_revision": "1cfa9a7208912126459214e8b04321603b3df60c",
+  "draft_revision": "3457dff1417cb84927f6098a5fcb7cee85c934b7",
+  "temperature": 0.0,
+  "max_new_tokens": 256,
+  "decode_seed": 980406,
+  "subset_seed": 20260805,
+  "manifest_sha256": "bf9537b0cc70cea9",
+  "device": "cuda",
+  "dtype": "torch.bfloat16",
+  "gpu_name": "NVIDIA A10",
+  "torch_version": "2.9.1+cu128",
+  "transformers_version": "5.10.2",
+  "repo_git_sha": "unknown",
+  "peak_mem_gib": 10.36
+}

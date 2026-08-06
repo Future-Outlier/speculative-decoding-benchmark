@@ -21,8 +21,11 @@ COLORS = {"fresh": "#2266aa", "gap": "#cc5522", "self_kv": "#228855"}
 K = 7
 
 
+PREFIX = "s1"
+
+
 def load_rounds(results: Path, algo: str, mode: str) -> list[dict]:
-    path = results / f"s1_{algo}_{mode}.rounds.jsonl"
+    path = results / f"{PREFIX}_{algo}_{mode}.rounds.jsonl"
     rows = []
     with path.open() as fh:
         for line in fh:
@@ -78,7 +81,10 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--results", required=True)
     ap.add_argument("--out", required=True)
+    ap.add_argument("--prefix", default="s1")
     args = ap.parse_args()
+    global PREFIX
+    PREFIX = args.prefix
     results = Path(args.results)
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)

@@ -106,6 +106,40 @@ break-even at 0.75–0.81 — still far above 0.586–0.616. Hardware-normalized
 is worse: SSD needs an extra draft GPU (the paper's 4+1 H100 buys ~+30% for
 +25% hardware; here 1+1 would buy −23~−29% for +100%).
 
+### Temperature 0 vs 1
+
+The same measurement at temperature 0 (`s1t0`: greedy, identical 96 prompts,
+bf16; results in `results/s1t0/`, figures in `figs/t0/`):
+
+| temp | algo | τ_fresh | τ_gap | τ_self_kv | τ_stale/τ_fresh | R_ssd/R_sync (p_hit=1) | break-even |
+|---|---|---|---|---|---|---|---|
+| 1.0 | DFlash | 4.35 | 2.55 | 2.59 | 0.587 / 0.595 | 0.70 / 0.71 | 0.83 |
+| 1.0 | DSpark | 4.98 | 2.94 | 3.07 | 0.590 / 0.618 | 0.74 / 0.77 | 0.80 |
+| 0.0 | DFlash | 4.64 | 2.71 | 2.79 | 0.584 / 0.600 | 0.70 / 0.72 | 0.84 |
+| 0.0 | DSpark | 5.11 | 3.01 | 3.17 | 0.590 / 0.620 | 0.72 / 0.76 | 0.81 |
+
+Three things the temperature-0 arm adds:
+
+1. **The degradation ratio is temperature-invariant** (0.584–0.620 at both
+   temps; Δτ 95% CIs at temp 0: DFlash +2.16 [+2.01, +2.32], DSpark +2.30
+   [+2.16, +2.44]). Greedy raises τ slightly for everyone (+0.1–0.3) but
+   moves the SSD verdict nowhere: R_ssd/R_sync stays 0.70–0.77 against a
+   0.80–0.84 break-even.
+2. **The temp-0 comparison is perfectly paired.** At temperature 0 the
+   committed text is provably identical across fresh/gap/self_kv (rejection
+   sampling degenerates to argmax equality — all six runs emit exactly
+   22,120 output tokens), so the ratio is measured on the *same trajectory*
+   and the trajectory-divergence caveat that applies at temperature 1
+   vanishes here.
+3. **The math simplifies.** With one-hot p, per-token acceptance
+   min(1, p/q) becomes the indicator [draft argmax == target argmax], so
+   τ_stale/τ_fresh at temp 0 is a pure measure of *argmax stability under
+   stale conditioning* — no sampling noise term at all. A corollary: a
+   temp-0 correction token always has draft rank ≥ 2 (a rank-1 token would
+   have been proposed and accepted), so SSD fan-out branches at greedy
+   should enumerate from the draft's rank-2 candidate upward
+   (`figs/t0/rank_cdf.png` gives the coverage curve).
+
 **What this proxy does and does not show** (all biases run in SSD's favor
 except the last): p_hit = 1 assumed; glue/extend/communication ignored;
 bsz = 1; and S1's every-round-stale chain τ is a *proxy* for the true

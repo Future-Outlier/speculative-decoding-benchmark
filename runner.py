@@ -249,7 +249,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--algo", choices=list(ALGO_DRAFTS_4B), required=True)
     ap.add_argument("--mode", choices=list(MODES), required=True)
-    ap.add_argument("--stage", choices=["s0", "s1"], required=True)
+    ap.add_argument("--stage", choices=["s0", "s1", "s1t0"], required=True)
     ap.add_argument("--target", default="Qwen/Qwen3-4B")
     ap.add_argument("--draft", default=None)
     ap.add_argument("--out-dir", default=str(REPO_ROOT / "ssd_stale_exp" / "results"))
@@ -277,6 +277,9 @@ def main():
     stage_defaults = {
         "s0": {"samples_per_task": 2, "max_new_tokens": 64, "temperature": 0.0},
         "s1": {"samples_per_task": 32, "max_new_tokens": 256, "temperature": 1.0},
+        # Same measurement as s1 but greedy — no correctness oracle here
+        # (that is s0's job); bf16 like deployment.
+        "s1t0": {"samples_per_task": 32, "max_new_tokens": 256, "temperature": 0.0},
     }
     cfg = stage_defaults[args.stage]
     n_per_task = args.samples_per_task or cfg["samples_per_task"]

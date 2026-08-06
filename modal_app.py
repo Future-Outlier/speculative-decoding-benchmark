@@ -41,7 +41,7 @@ OVERHEAD = 1.15  # CPU/mem/cold-start on top of the GPU rate
 RATE = GPU_RATE_USD_H[GPU_KIND] * OVERHEAD
 
 # Per-run worst-case wall-clock reserve (also the subprocess timeout).
-RUN_RESERVE_S = {"s0": 1200, "s1": 3600}
+RUN_RESERVE_S = {"s0": 1200, "s1": 3600, "s1t0": 3600}
 
 TARGET = "Qwen/Qwen3-4B"
 DRAFTS = {
@@ -132,7 +132,7 @@ def download_models():
     max_containers=1,
 )
 def run_stage(stage: str, algos: list[str], modes: list[str]) -> dict:
-    assert stage in ("s0", "s1")
+    assert stage in ("s0", "s1", "s1t0")
     assert PINS.exists(), "run --action download first (pinned_revisions.json missing)"
     pins = json.loads(PINS.read_text())
 
@@ -245,7 +245,7 @@ def main(action: str = "s0", algos: str = "dflash,dspark", modes: str = ""):
     mode_list = [m for m in modes.split(",") if m] or list(MODES)
     if action == "download":
         download_models.remote()
-    elif action in ("s0", "s1"):
+    elif action in ("s0", "s1", "s1t0"):
         rep = run_stage.remote(action, algo_list, mode_list)
         print(json.dumps(rep.get("statuses", []), indent=2))
         print(f"total spent: ${rep.get('total_usd')} / budget ${rep.get('budget_usd')}")
