@@ -1,0 +1,80 @@
+{
+  "rounds": 5114,
+  "samples": 96,
+  "tau": 4.352,
+  "tau_analytic": 4.3495,
+  "verify_rate": 0.545,
+  "accept_rate_at_k": [
+    0.8367,
+    0.6634,
+    0.5315,
+    0.4328,
+    0.363,
+    0.2945,
+    0.2396
+  ],
+  "committed_hist": [
+    0,
+    839,
+    891,
+    673,
+    506,
+    357,
+    348,
+    281,
+    1219
+  ],
+  "committed_pmf": [
+    0.0,
+    0.16406,
+    0.17423,
+    0.1316,
+    0.09894,
+    0.06981,
+    0.06805,
+    0.05495,
+    0.23837
+  ],
+  "recovery_kinds": {
+    "correction": 3874,
+    "bonus": 1219,
+    "eos": 21
+  },
+  "correction_rank_cdf": {
+    "top1": 0.2263810015487868,
+    "top2": 0.5369127516778524,
+    "top4": 0.7248322147651006,
+    "top8": 0.8340216830149716,
+    "top16": 0.9099122354155911
+  },
+  "tau_by_staleness_tokens": {
+    "0": {
+      "n": 5114,
+      "tau": 4.351974970668753
+    }
+  },
+  "t_propose_ms_p50": 7.245,
+  "t_round_ms_p50": 43.584,
+  "t_round_ms_p90": 46.336,
+  "output_tokens": 22081,
+  "tokens_per_s": 94.2,
+  "algo": "dflash",
+  "mode": "fresh",
+  "stage": "s1",
+  "target": "Qwen/Qwen3-4B",
+  "draft": "deepseek-ai/dflash_qwen3_4b_block7",
+  "target_revision": "1cfa9a7208912126459214e8b04321603b3df60c",
+  "draft_revision": "02d530b7962ea1412beaf41a05c0b8e36d5f9b1d",
+  "temperature": 1.0,
+  "max_new_tokens": 256,
+  "decode_seed": 980406,
+  "subset_seed": 20260805,
+  "manifest_sha256": "bf9537b0cc70cea9",
+  "device": "cuda",
+  "dtype": "torch.bfloat16",
+  "gpu_name": "NVIDIA A10",
+  "torch_version": "2.9.1+cu128",
+  "transformers_version": "5.10.2",
+  "repo_git_sha": "unknown",
+  "peak_mem_gib": 10.22
+}

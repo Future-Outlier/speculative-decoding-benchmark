@@ -1,0 +1,113 @@
+{
+  "rounds": 175,
+  "samples": 6,
+  "tau": 2.2571,
+  "tau_analytic": 2.2571,
+  "verify_rate": 0.2821,
+  "accept_rate_at_k": [
+    0.4343,
+    0.3086,
+    0.1829,
+    0.1314,
+    0.0914,
+    0.0629,
+    0.0457
+  ],
+  "committed_hist": [
+    0,
+    99,
+    22,
+    22,
+    9,
+    7,
+    5,
+    3,
+    8
+  ],
+  "committed_pmf": [
+    0.0,
+    0.56571,
+    0.12571,
+    0.12571,
+    0.05143,
+    0.04,
+    0.02857,
+    0.01714,
+    0.04571
+  ],
+  "recovery_kinds": {
+    "bonus": 8,
+    "correction": 167
+  },
+  "correction_rank_cdf": {
+    "top1": 0.0,
+    "top2": 1.0,
+    "top4": 1.0,
+    "top8": 1.0,
+    "top16": 1.0
+  },
+  "tau_by_staleness_tokens": {
+    "0": {
+      "n": 6,
+      "tau": 4.0
+    },
+    "1": {
+      "n": 98,
+      "tau": 2.6122448979591835
+    },
+    "2": {
+      "n": 22,
+      "tau": 2.0
+    },
+    "3": {
+      "n": 20,
+      "tau": 1.75
+    },
+    "4": {
+      "n": 9,
+      "tau": 1.0
+    },
+    "5": {
+      "n": 6,
+      "tau": 1.6666666666666667
+    },
+    "6": {
+      "n": 5,
+      "tau": 1.4
+    },
+    "7": {
+      "n": 3,
+      "tau": 1.0
+    },
+    "8": {
+      "n": 6,
+      "tau": 1.1666666666666667
+    }
+  },
+  "t_propose_ms_p50": 7.425,
+  "t_round_ms_p50": 40.436,
+  "t_round_ms_p90": 41.2,
+  "output_tokens": 384,
+  "tokens_per_s": 48.07,
+  "algo": "dflash",
+  "mode": "gap",
+  "stage": "s0",
+  "target": "Qwen/Qwen3-4B",
+  "draft": "deepseek-ai/dflash_qwen3_4b_block7",
+  "target_revision": "1cfa9a7208912126459214e8b04321603b3df60c",
+  "draft_revision": "02d530b7962ea1412beaf41a05c0b8e36d5f9b1d",
+  "temperature": 0.0,
+  "max_new_tokens": 64,
+  "decode_seed": 980406,
+  "subset_seed": 20260805,
+  "manifest_sha256": "d8bdf467862e1bd2",
+  "device": "cuda",
+  "dtype": "torch.float32",
+  "gpu_name": "NVIDIA L40S",
+  "torch_version": "2.9.1+cu128",
+  "transformers_version": "5.10.2",
+  "repo_git_sha": "unknown",
+  "peak_mem_gib": 20.19,
+  "greedy_match_all": true,
+  "mismatch_count": 0
+}

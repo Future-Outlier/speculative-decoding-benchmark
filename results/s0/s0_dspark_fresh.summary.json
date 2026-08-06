@@ -1,0 +1,81 @@
+{
+  "rounds": 103,
+  "samples": 6,
+  "tau": 3.8252,
+  "tau_analytic": 3.8252,
+  "verify_rate": 0.4782,
+  "accept_rate_at_k": [
+    0.7767,
+    0.6117,
+    0.4466,
+    0.301,
+    0.2621,
+    0.2427,
+    0.1845
+  ],
+  "committed_hist": [
+    0,
+    23,
+    17,
+    17,
+    15,
+    4,
+    2,
+    6,
+    19
+  ],
+  "committed_pmf": [
+    0.0,
+    0.2233,
+    0.16505,
+    0.16505,
+    0.14563,
+    0.03883,
+    0.01942,
+    0.05825,
+    0.18447
+  ],
+  "recovery_kinds": {
+    "bonus": 19,
+    "correction": 84
+  },
+  "correction_rank_cdf": {
+    "top1": 0.0,
+    "top2": 1.0,
+    "top4": 1.0,
+    "top8": 1.0,
+    "top16": 1.0
+  },
+  "tau_by_staleness_tokens": {
+    "0": {
+      "n": 103,
+      "tau": 3.825242718446602
+    }
+  },
+  "t_propose_ms_p50": 8.997,
+  "t_round_ms_p50": 42.086,
+  "t_round_ms_p90": 42.733,
+  "output_tokens": 384,
+  "tokens_per_s": 73.28,
+  "algo": "dspark",
+  "mode": "fresh",
+  "stage": "s0",
+  "target": "Qwen/Qwen3-4B",
+  "draft": "deepseek-ai/dspark_qwen3_4b_block7",
+  "target_revision": "1cfa9a7208912126459214e8b04321603b3df60c",
+  "draft_revision": "3457dff1417cb84927f6098a5fcb7cee85c934b7",
+  "temperature": 0.0,
+  "max_new_tokens": 64,
+  "decode_seed": 980406,
+  "subset_seed": 20260805,
+  "manifest_sha256": "d8bdf467862e1bd2",
+  "device": "cuda",
+  "dtype": "torch.float32",
+  "gpu_name": "NVIDIA L40S",
+  "torch_version": "2.9.1+cu128",
+  "transformers_version": "5.10.2",
+  "repo_git_sha": "unknown",
+  "peak_mem_gib": 20.48,
+  "greedy_match_all": true,
+  "mismatch_count": 0
+}

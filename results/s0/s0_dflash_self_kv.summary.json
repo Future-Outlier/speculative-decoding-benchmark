@@ -1,0 +1,113 @@
+{
+  "rounds": 174,
+  "samples": 6,
+  "tau": 2.2586,
+  "tau_analytic": 2.2586,
+  "verify_rate": 0.2823,
+  "accept_rate_at_k": [
+    0.4598,
+    0.2644,
+    0.1724,
+    0.1207,
+    0.1149,
+    0.0747,
+    0.0517
+  ],
+  "committed_hist": [
+    0,
+    94,
+    34,
+    16,
+    9,
+    1,
+    7,
+    4,
+    9
+  ],
+  "committed_pmf": [
+    0.0,
+    0.54023,
+    0.1954,
+    0.09195,
+    0.05172,
+    0.00575,
+    0.04023,
+    0.02299,
+    0.05172
+  ],
+  "recovery_kinds": {
+    "bonus": 9,
+    "correction": 165
+  },
+  "correction_rank_cdf": {
+    "top1": 0.0,
+    "top2": 1.0,
+    "top4": 1.0,
+    "top8": 1.0,
+    "top16": 1.0
+  },
+  "tau_by_staleness_tokens": {
+    "0": {
+      "n": 6,
+      "tau": 4.0
+    },
+    "1": {
+      "n": 93,
+      "tau": 2.5268817204301075
+    },
+    "2": {
+      "n": 34,
+      "tau": 2.176470588235294
+    },
+    "3": {
+      "n": 14,
+      "tau": 1.5
+    },
+    "4": {
+      "n": 8,
+      "tau": 1.625
+    },
+    "5": {
+      "n": 1,
+      "tau": 2.0
+    },
+    "6": {
+      "n": 7,
+      "tau": 1.5714285714285714
+    },
+    "7": {
+      "n": 4,
+      "tau": 1.0
+    },
+    "8": {
+      "n": 7,
+      "tau": 1.2857142857142858
+    }
+  },
+  "t_propose_ms_p50": 7.375,
+  "t_round_ms_p50": 40.533,
+  "t_round_ms_p90": 41.081,
+  "output_tokens": 384,
+  "tokens_per_s": 48.18,
+  "algo": "dflash",
+  "mode": "self_kv",
+  "stage": "s0",
+  "target": "Qwen/Qwen3-4B",
+  "draft": "deepseek-ai/dflash_qwen3_4b_block7",
+  "target_revision": "1cfa9a7208912126459214e8b04321603b3df60c",
+  "draft_revision": "02d530b7962ea1412beaf41a05c0b8e36d5f9b1d",
+  "temperature": 0.0,
+  "max_new_tokens": 64,
+  "decode_seed": 980406,
+  "subset_seed": 20260805,
+  "manifest_sha256": "d8bdf467862e1bd2",
+  "device": "cuda",
+  "dtype": "torch.float32",
+  "gpu_name": "NVIDIA L40S",
+  "torch_version": "2.9.1+cu128",
+  "transformers_version": "5.10.2",
+  "repo_git_sha": "unknown",
+  "peak_mem_gib": 20.19,
+  "greedy_match_all": true,
+  "mismatch_count": 0
+}

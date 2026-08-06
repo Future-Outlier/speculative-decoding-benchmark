@@ -1,0 +1,660 @@
+{
+  "stage": "s1",
+  "ok": true,
+  "statuses": [
+    {
+      "algo": "dflash",
+      "mode": "fresh",
+      "status": "OK",
+      "seconds": 250.0
+    },
+    {
+      "algo": "dflash",
+      "mode": "gap",
+      "status": "OK",
+      "seconds": 396.1
+    },
+    {
+      "algo": "dflash",
+      "mode": "self_kv",
+      "status": "OK",
+      "seconds": 407.9
+    },
+    {
+      "algo": "dspark",
+      "mode": "fresh",
+      "status": "OK",
+      "seconds": 222.9
+    },
+    {
+      "algo": "dspark",
+      "mode": "gap",
+      "status": "OK",
+      "seconds": 375.7
+    },
+    {
+      "algo": "dspark",
+      "mode": "self_kv",
+      "status": "OK",
+      "seconds": 352.8
+    }
+  ],
+  "total_usd": 0.7829,
+  "budget_usd": 8.0,
+  "gpu": "A10",
+  "pins": {
+    "Qwen/Qwen3-4B": "1cfa9a7208912126459214e8b04321603b3df60c",
+    "deepseek-ai/dflash_qwen3_4b_block7": "02d530b7962ea1412beaf41a05c0b8e36d5f9b1d",
+    "deepseek-ai/dspark_qwen3_4b_block7": "3457dff1417cb84927f6098a5fcb7cee85c934b7"
+  },
+  "summaries": {
+    "s1_dflash_fresh.summary": {
+      "rounds": 5114,
+      "samples": 96,
+      "tau": 4.352,
+      "tau_analytic": 4.3495,
+      "verify_rate": 0.545,
+      "accept_rate_at_k": [
+        0.8367,
+        0.6634,
+        0.5315,
+        0.4328,
+        0.363,
+        0.2945,
+        0.2396
+      ],
+      "committed_hist": [
+        0,
+        839,
+        891,
+        673,
+        506,
+        357,
+        348,
+        281,
+        1219
+      ],
+      "committed_pmf": [
+        0.0,
+        0.16406,
+        0.17423,
+        0.1316,
+        0.09894,
+        0.06981,
+        0.06805,
+        0.05495,
+        0.23837
+      ],
+      "recovery_kinds": {
+        "correction": 3874,
+        "bonus": 1219,
+        "eos": 21
+      },
+      "correction_rank_cdf": {
+        "top1": 0.2263810015487868,
+        "top2": 0.5369127516778524,
+        "top4": 0.7248322147651006,
+        "top8": 0.8340216830149716,
+        "top16": 0.9099122354155911
+      },
+      "tau_by_staleness_tokens": {
+        "0": {
+          "n": 5114,
+          "tau": 4.351974970668753
+        }
+      },
+      "t_propose_ms_p50": 7.245,
+      "t_round_ms_p50": 43.584,
+      "t_round_ms_p90": 46.336,
+      "output_tokens": 22081,
+      "tokens_per_s": 94.2,
+      "algo": "dflash",
+      "mode": "fresh",
+      "stage": "s1",
+      "target": "Qwen/Qwen3-4B",
+      "draft": "deepseek-ai/dflash_qwen3_4b_block7",
+      "target_revision": "1cfa9a7208912126459214e8b04321603b3df60c",
+      "draft_revision": "02d530b7962ea1412beaf41a05c0b8e36d5f9b1d",
+      "temperature": 1.0,
+      "max_new_tokens": 256,
+      "decode_seed": 980406,
+      "subset_seed": 20260805,
+      "manifest_sha256": "bf9537b0cc70cea9",
+      "device": "cuda",
+      "dtype": "torch.bfloat16",
+      "gpu_name": "NVIDIA A10",
+      "torch_version": "2.9.1+cu128",
+      "transformers_version": "5.10.2",
+      "repo_git_sha": "unknown",
+      "peak_mem_gib": 10.22
+    },
+    "s1_dflash_gap.summary": {
+      "rounds": 8519,
+      "samples": 96,
+      "tau": 2.5529,
+      "tau_analytic": 2.5519,
+      "verify_rate": 0.3195,
+      "accept_rate_at_k": [
+        0.4802,
+        0.3201,
+        0.2364,
+        0.1801,
+        0.1428,
+        0.112,
+        0.0854
+      ],
+      "committed_hist": [
+        0,
+        4433,
+        1364,
+        716,
+        476,
+        320,
+        260,
+        225,
+        725
+      ],
+      "committed_pmf": [
+        0.0,
+        0.52037,
+        0.16011,
+        0.08405,
+        0.05588,
+        0.03756,
+        0.03052,
+        0.02641,
+        0.0851
+      ],
+      "recovery_kinds": {
+        "correction": 7771,
+        "bonus": 725,
+        "eos": 23
+      },
+      "correction_rank_cdf": {
+        "top1": 0.1472140007721014,
+        "top2": 0.36275897567880583,
+        "top4": 0.527602625144769,
+        "top8": 0.6512675331360185,
+        "top16": 0.7443057521554497
+      },
+      "tau_by_staleness_tokens": {
+        "0": {
+          "n": 96,
+          "tau": 4.0625
+        },
+        "1": {
+          "n": 4418,
+          "tau": 3.1034404708012677
+        },
+        "2": {
+          "n": 1347,
+          "tau": 2.2665181885671863
+        },
+        "3": {
+          "n": 702,
+          "tau": 2.0655270655270654
+        },
+        "4": {
+          "n": 467,
+          "tau": 1.6745182012847966
+        },
+        "5": {
+          "n": 310,
+          "tau": 1.6548387096774193
+        },
+        "6": {
+          "n": 254,
+          "tau": 1.5708661417322836
+        },
+        "7": {
+          "n": 220,
+          "tau": 1.5863636363636364
+        },
+        "8": {
+          "n": 705,
+          "tau": 1.5617021276595744
+        }
+      },
+      "t_propose_ms_p50": 7.261,
+      "t_round_ms_p50": 43.502,
+      "t_round_ms_p90": 46.251,
+      "output_tokens": 21666,
+      "tokens_per_s": 56.16,
+      "algo": "dflash",
+      "mode": "gap",
+      "stage": "s1",
+      "target": "Qwen/Qwen3-4B",
+      "draft": "deepseek-ai/dflash_qwen3_4b_block7",
+      "target_revision": "1cfa9a7208912126459214e8b04321603b3df60c",
+      "draft_revision": "02d530b7962ea1412beaf41a05c0b8e36d5f9b1d",
+      "temperature": 1.0,
+      "max_new_tokens": 256,
+      "decode_seed": 980406,
+      "subset_seed": 20260805,
+      "manifest_sha256": "bf9537b0cc70cea9",
+      "device": "cuda",
+      "dtype": "torch.bfloat16",
+      "gpu_name": "NVIDIA A10",
+      "torch_version": "2.9.1+cu128",
+      "transformers_version": "5.10.2",
+      "repo_git_sha": "unknown",
+      "peak_mem_gib": 10.22
+    },
+    "s1_dflash_self_kv.summary": {
+      "rounds": 8592,
+      "samples": 96,
+      "tau": 2.591,
+      "tau_analytic": 2.589,
+      "verify_rate": 0.3242,
+      "accept_rate_at_k": [
+        0.5203,
+        0.3371,
+        0.2394,
+        0.1788,
+        0.1348,
+        0.1043,
+        0.0797
+      ],
+      "committed_hist": [
+        0,
+        4126,
+        1579,
+        835,
+        519,
+        377,
+        263,
+        210,
+        683
+      ],
+      "committed_pmf": [
+        0.0,
+        0.48021,
+        0.18378,
+        0.09718,
+        0.06041,
+        0.04388,
+        0.03061,
+        0.02444,
+        0.07949
+      ],
+      "recovery_kinds": {
+        "correction": 7892,
+        "bonus": 683,
+        "eos": 17
+      },
+      "correction_rank_cdf": {
+        "top1": 0.21996958945767867,
+        "top2": 0.44678155093765837,
+        "top4": 0.6265838824125697,
+        "top8": 0.7498732894069944,
+        "top16": 0.8352762290927521
+      },
+      "tau_by_staleness_tokens": {
+        "0": {
+          "n": 96,
+          "tau": 4.0625
+        },
+        "1": {
+          "n": 4110,
+          "tau": 3.1250608272506084
+        },
+        "2": {
+          "n": 1562,
+          "tau": 2.448783610755442
+        },
+        "3": {
+          "n": 824,
+          "tau": 2.0800970873786406
+        },
+        "4": {
+          "n": 512,
+          "tau": 1.935546875
+        },
+        "5": {
+          "n": 372,
+          "tau": 1.6935483870967742
+        },
+        "6": {
+          "n": 258,
+          "tau": 1.7093023255813953
+        },
+        "7": {
+          "n": 200,
+          "tau": 1.605
+        },
+        "8": {
+          "n": 658,
+          "tau": 1.6808510638297873
+        }
+      },
+      "t_propose_ms_p50": 7.4,
+      "t_round_ms_p50": 44.243,
+      "t_round_ms_p90": 46.724,
+      "output_tokens": 22132,
+      "tokens_per_s": 55.75,
+      "algo": "dflash",
+      "mode": "self_kv",
+      "stage": "s1",
+      "target": "Qwen/Qwen3-4B",
+      "draft": "deepseek-ai/dflash_qwen3_4b_block7",
+      "target_revision": "1cfa9a7208912126459214e8b04321603b3df60c",
+      "draft_revision": "02d530b7962ea1412beaf41a05c0b8e36d5f9b1d",
+      "temperature": 1.0,
+      "max_new_tokens": 256,
+      "decode_seed": 980406,
+      "subset_seed": 20260805,
+      "manifest_sha256": "bf9537b0cc70cea9",
+      "device": "cuda",
+      "dtype": "torch.bfloat16",
+      "gpu_name": "NVIDIA A10",
+      "torch_version": "2.9.1+cu128",
+      "transformers_version": "5.10.2",
+      "repo_git_sha": "unknown",
+      "peak_mem_gib": 10.21
+    },
+    "s1_dspark_fresh.summary": {
+      "rounds": 4437,
+      "samples": 96,
+      "tau": 4.9754,
+      "tau_analytic": 4.9971,
+      "verify_rate": 0.6232,
+      "accept_rate_at_k": [
+        0.8607,
+        0.7369,
+        0.6297,
+        0.5376,
+        0.4607,
+        0.4042,
+        0.3589
+      ],
+      "committed_hist": [
+        0,
+        620,
+        553,
+        478,
+        411,
+        341,
+        254,
+        197,
+        1583
+      ],
+      "committed_pmf": [
+        0.0,
+        0.13973,
+        0.12463,
+        0.10773,
+        0.09263,
+        0.07685,
+        0.05725,
+        0.0444,
+        0.35677
+      ],
+      "recovery_kinds": {
+        "correction": 2829,
+        "bonus": 1583,
+        "eos": 25
+      },
+      "correction_rank_cdf": {
+        "top1": 0.16189466242488512,
+        "top2": 0.5054789678331566,
+        "top4": 0.7104984093319194,
+        "top8": 0.8133616118769883,
+        "top16": 0.8815835984446801
+      },
+      "tau_by_staleness_tokens": {
+        "0": {
+          "n": 4437,
+          "tau": 4.975433851701601
+        }
+      },
+      "t_propose_ms_p50": 9.146,
+      "t_round_ms_p50": 45.716,
+      "t_round_ms_p90": 48.095,
+      "output_tokens": 21903,
+      "tokens_per_s": 103.25,
+      "algo": "dspark",
+      "mode": "fresh",
+      "stage": "s1",
+      "target": "Qwen/Qwen3-4B",
+      "draft": "deepseek-ai/dspark_qwen3_4b_block7",
+      "target_revision": "1cfa9a7208912126459214e8b04321603b3df60c",
+      "draft_revision": "3457dff1417cb84927f6098a5fcb7cee85c934b7",
+      "temperature": 1.0,
+      "max_new_tokens": 256,
+      "decode_seed": 980406,
+      "subset_seed": 20260805,
+      "manifest_sha256": "bf9537b0cc70cea9",
+      "device": "cuda",
+      "dtype": "torch.bfloat16",
+      "gpu_name": "NVIDIA A10",
+      "torch_version": "2.9.1+cu128",
+      "transformers_version": "5.10.2",
+      "repo_git_sha": "unknown",
+      "peak_mem_gib": 10.35
+    },
+    "s1_dspark_gap.summary": {
+      "rounds": 7591,
+      "samples": 96,
+      "tau": 2.9369,
+      "tau_analytic": 2.923,
+      "verify_rate": 0.3676,
+      "accept_rate_at_k": [
+        0.5124,
+        0.3763,
+        0.2941,
+        0.2439,
+        0.203,
+        0.1697,
+        0.1428
+      ],
+      "committed_hist": [
+        0,
+        3705,
+        1038,
+        621,
+        382,
+        310,
+        254,
+        200,
+        1081
+      ],
+      "committed_pmf": [
+        0.0,
+        0.48808,
+        0.13674,
+        0.08181,
+        0.05032,
+        0.04084,
+        0.03346,
+        0.02635,
+        0.14241
+      ],
+      "recovery_kinds": {
+        "correction": 6487,
+        "bonus": 1081,
+        "eos": 23
+      },
+      "correction_rank_cdf": {
+        "top1": 0.09696315708339756,
+        "top2": 0.31493756744257745,
+        "top4": 0.49483582549714816,
+        "top8": 0.6258671188530908,
+        "top16": 0.7200554956065978
+      },
+      "tau_by_staleness_tokens": {
+        "0": {
+          "n": 96,
+          "tau": 5.104166666666667
+        },
+        "1": {
+          "n": 3684,
+          "tau": 3.6563517915309447
+        },
+        "2": {
+          "n": 1025,
+          "tau": 2.877073170731707
+        },
+        "3": {
+          "n": 614,
+          "tau": 2.262214983713355
+        },
+        "4": {
+          "n": 372,
+          "tau": 2.096774193548387
+        },
+        "5": {
+          "n": 302,
+          "tau": 1.9172185430463575
+        },
+        "6": {
+          "n": 247,
+          "tau": 1.8178137651821862
+        },
+        "7": {
+          "n": 199,
+          "tau": 1.5577889447236182
+        },
+        "8": {
+          "n": 1052,
+          "tau": 1.785171102661597
+        }
+      },
+      "t_propose_ms_p50": 9.251,
+      "t_round_ms_p50": 46.658,
+      "t_round_ms_p90": 48.377,
+      "output_tokens": 22193,
+      "tokens_per_s": 60.8,
+      "algo": "dspark",
+      "mode": "gap",
+      "stage": "s1",
+      "target": "Qwen/Qwen3-4B",
+      "draft": "deepseek-ai/dspark_qwen3_4b_block7",
+      "target_revision": "1cfa9a7208912126459214e8b04321603b3df60c",
+      "draft_revision": "3457dff1417cb84927f6098a5fcb7cee85c934b7",
+      "temperature": 1.0,
+      "max_new_tokens": 256,
+      "decode_seed": 980406,
+      "subset_seed": 20260805,
+      "manifest_sha256": "bf9537b0cc70cea9",
+      "device": "cuda",
+      "dtype": "torch.bfloat16",
+      "gpu_name": "NVIDIA A10",
+      "torch_version": "2.9.1+cu128",
+      "transformers_version": "5.10.2",
+      "repo_git_sha": "unknown",
+      "peak_mem_gib": 10.36
+    },
+    "s1_dspark_self_kv.summary": {
+      "rounds": 7161,
+      "samples": 96,
+      "tau": 3.073,
+      "tau_analytic": 3.0705,
+      "verify_rate": 0.3848,
+      "accept_rate_at_k": [
+        0.57,
+        0.4229,
+        0.3201,
+        0.256,
+        0.2064,
+        0.1675,
+        0.1365
+      ],
+      "committed_hist": [
+        0,
+        3084,
+        1060,
+        731,
+        459,
+        356,
+        277,
+        221,
+        973
+      ],
+      "committed_pmf": [
+        0.0,
+        0.43067,
+        0.14802,
+        0.10208,
+        0.0641,
+        0.04971,
+        0.03868,
+        0.03086,
+        0.13587
+      ],
+      "recovery_kinds": {
+        "correction": 6164,
+        "bonus": 973,
+        "eos": 24
+      },
+      "correction_rank_cdf": {
+        "top1": 0.13497728747566515,
+        "top2": 0.3849772874756652,
+        "top4": 0.5785204412719014,
+        "top8": 0.70489941596366,
+        "top16": 0.7963984425697599
+      },
+      "tau_by_staleness_tokens": {
+        "0": {
+          "n": 96,
+          "tau": 5.104166666666667
+        },
+        "1": {
+          "n": 3064,
+          "tau": 3.7255221932114884
+        },
+        "2": {
+          "n": 1046,
+          "tau": 3.2151051625239004
+        },
+        "3": {
+          "n": 719,
+          "tau": 2.7858136300417247
+        },
+        "4": {
+          "n": 450,
+          "tau": 2.368888888888889
+        },
+        "5": {
+          "n": 348,
+          "tau": 2.3333333333333335
+        },
+        "6": {
+          "n": 272,
+          "tau": 1.9448529411764706
+        },
+        "7": {
+          "n": 217,
+          "tau": 1.8341013824884793
+        },
+        "8": {
+          "n": 949,
+          "tau": 2.0337197049525817
+        }
+      },
+      "t_propose_ms_p50": 9.084,
+      "t_round_ms_p50": 45.768,
+      "t_round_ms_p90": 47.939,
+      "output_tokens": 21900,
+      "tokens_per_s": 64.08,
+      "algo": "dspark",
+      "mode": "self_kv",
+      "stage": "s1",
+      "target": "Qwen/Qwen3-4B",
+      "draft": "deepseek-ai/dspark_qwen3_4b_block7",
+      "target_revision": "1cfa9a7208912126459214e8b04321603b3df60c",
+      "draft_revision": "3457dff1417cb84927f6098a5fcb7cee85c934b7",
+      "temperature": 1.0,
+      "max_new_tokens": 256,
+      "decode_seed": 980406,
+      "subset_seed": 20260805,
+      "manifest_sha256": "bf9537b0cc70cea9",
+      "device": "cuda",
+      "dtype": "torch.bfloat16",
+      "gpu_name": "NVIDIA A10",
+      "torch_version": "2.9.1+cu128",
+      "transformers_version": "5.10.2",
+      "repo_git_sha": "unknown",
+      "peak_mem_gib": 10.35
+    }
+  }
+}
