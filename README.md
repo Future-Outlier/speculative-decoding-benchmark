@@ -105,6 +105,8 @@ ratio-of-sums in every bootstrap draw.
 | DFlash | 4.352 | 2.591 | 0.595 [0.578, 0.612] | 2.553 |
 | DSpark | 4.975 | 3.073 | 0.618 [0.600, 0.634] | 2.937 |
 
+![Temperature-1 accepted length for fresh, gap, and retained-mask-KV treatments](figs/tau_paired.png)
+
 Under the perfect-coverage retained-mask-KV assumptions, `self_kv` is the
 candidate quality estimate.  It retains only 59.5% (DFlash) and 61.8% (DSpark)
 of fresh accepted length.  Using the old single-GPU component timings, an idealized
@@ -120,12 +122,34 @@ Excluding every boundary-affected round gives nearly identical `self/fresh`
 retention (`0.594` DFlash, `0.618` DSpark), so the conclusion is not a terminal-
 round artifact.
 
+### Temperature-1 diagnostics
+
+The following figures show accepted-prefix survival, the accepted-length
+distribution, and the observational association with the number of missing
+target-feature rows.  The final plot is diagnostic rather than causal.
+
+![Temperature-1 accepted-prefix survival](figs/alpha_k.png)
+
+![Temperature-1 accepted-length distribution](figs/pmf.png)
+
+![Temperature-1 association between accepted length and missing target-feature rows](figs/tau_vs_staleness.png)
+
 Temperature 0 gives similar ratios at the two temperatures that were tested:
 
 | algorithm | fresh tau | gap tau | self_kv tau | gap/fresh | self/fresh |
 |---|---:|---:|---:|---:|---:|
 | DFlash | 4.639 | 2.708 | 2.785 | 0.584 | 0.600 |
 | DSpark | 5.108 | 3.013 | 3.168 | 0.590 | 0.620 |
+
+### Temperature-0 sensitivity figures
+
+![Temperature-0 accepted length for fresh, gap, and retained-mask-KV treatments](figs/t0/tau_paired.png)
+
+![Temperature-0 accepted-prefix survival](figs/t0/alpha_k.png)
+
+![Temperature-0 accepted-length distribution](figs/t0/pmf.png)
+
+![Temperature-0 association between accepted length and missing target-feature rows](figs/t0/tau_vs_staleness.png)
 
 The previous temperature-0 recovery-rank figure was invalid: at temperature 0,
 `draft_probs` is one-hot, so every rejected non-argmax token ties at the
@@ -158,6 +182,12 @@ SDPA component timing and omits parts of the local callback lifecycle as well
 as SSD branch generation, cache lookup, communication, glue/extend, fallback,
 and real target/draft overlap.  New summaries separate propose, verify, and
 update observations, but deliberately do not call their sum a full cycle.
+
+The following figure is only a sensitivity analysis for the two explicitly
+defined renewal models in `breakeven_plot.py`; it is not measured SSD
+throughput.
+
+![Hypothetical SSD break-even sensitivity models](figs/breakeven.png)
 
 ## Staged validation path
 
