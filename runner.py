@@ -1,7 +1,7 @@
 """Run one (algo, mode, stage) staleness experiment on a single device.
 
-Usage (repo root on PYTHONPATH):
-  python ssd_stale_exp/runner.py --algo dflash --mode gap --stage s1 \
+Usage (from any clone name inside a DeepSpec checkout):
+  python speculative-decoding-benchmark/runner.py --algo dflash --mode gap --stage s1 \
       --target Qwen/Qwen3-4B --draft deepseek-ai/dflash_qwen3_4b_block7 \
       --out-dir /results
 
@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import inspect
 import json
 import os
 import sys
@@ -23,8 +24,10 @@ from pathlib import Path
 
 import torch
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(REPO_ROOT))
+BENCHMARK_ROOT = Path(__file__).resolve().parent
+DEEPSPEC_ROOT = Path(os.environ.get("DEEPSPEC_ROOT", BENCHMARK_ROOT.parent)).resolve()
+sys.path.insert(0, str(DEEPSPEC_ROOT))
+sys.path.insert(0, str(BENCHMARK_ROOT))
 
 from transformers import AutoModelForCausalLM, AutoTokenizer  # noqa: E402
 
@@ -38,8 +41,16 @@ from deepspec.eval.base_evaluator import (  # noqa: E402
 from deepspec.modeling.dspark.qwen3 import Qwen3DSparkModel  # noqa: E402
 from deepspec.utils import seed_all  # noqa: E402
 
-from ssd_stale_exp.manifest import build_manifest  # noqa: E402
-from ssd_stale_exp.stale_core import MODES, StaleController  # noqa: E402
+if __package__:  # package import, e.g. a clone named ``ssd_stale_exp``
+    from .benchmark_stats import (  # type: ignore[import-not-found]  # noqa: E402
+        committed_within_limit,
+    )
+    from .manifest import build_manifest  # type: ignore[import-not-found]  # noqa: E402
+    from .stale_core import MODES, StaleController  # type: ignore[import-not-found]  # noqa: E402
+else:  # direct script execution from an arbitrarily named clone
+    from benchmark_stats import committed_within_limit  # noqa: E402
+    from manifest import build_manifest  # noqa: E402
+    from stale_core import MODES, StaleController  # noqa: E402
 
 ALGO_DRAFTS_4B = {
     "dflash": "deepseek-ai/dflash_qwen3_4b_block7",
@@ -179,12 +190,14 @@ def summarize(round_rows: list[dict], sample_rows: list[dict], K: int) -> dict:
     n_rounds = len(live)
     if n_rounds == 0:
         return {"rounds": 0}
-    committed = sum(r["committed"] for r in live)
+    returned_tokens = sum(r["committed_within_limit"] for r in live)
+    accepted_length_tokens = sum(r["committed"] for r in live)
     proposed = sum(r["effective_proposal_len"] for r in live)
-    tau = committed / n_rounds
+    accepted_length = accepted_length_tokens / n_rounds
+    returned_per_verification = returned_tokens / n_rounds
     e_lens = [r["e_len_analytic"] for r in live if r["e_len_analytic"] is not None]
     tau_analytic = sum(e_lens) / len(e_lens) if e_lens else None
-    # cumulative per-position acceptance, repo-style accept_rate@k
+    # Prefix survival, not conditional acceptance at position k.
     prop_at = [0] * K
     acc_at = [0] * K
     for r in live:
@@ -196,48 +209,86 @@ def summarize(round_rows: list[dict], sample_rows: list[dict], K: int) -> dict:
     alpha = [
         (acc_at[k] / prop_at[k]) if prop_at[k] else None for k in range(K)
     ]
-    hist = [0] * (K + 2)
+    accepted_hist = [0] * (K + 2)
+    returned_hist = [0] * (K + 2)
     for r in live:
-        hist[min(r["committed"], K + 1)] += 1
-    pmf = [round(c / n_rounds, 5) for c in hist]
-    ranks = [
-        r["recovery_rank"] for r in live if r["recovery_kind"] == "correction"
-    ]
-    rank_cdf = {}
-    for topk in (1, 2, 4, 8, 16):
-        if ranks:
-            rank_cdf[f"top{topk}"] = sum(1 for x in ranks if x <= topk) / len(ranks)
+        accepted_hist[min(r["committed"], K + 1)] += 1
+        returned_hist[min(r["committed_within_limit"], K + 1)] += 1
+    accepted_pmf = [round(c / n_rounds, 5) for c in accepted_hist]
+    returned_pmf = [round(c / n_rounds, 5) for c in returned_hist]
     kinds = {}
     for r in live:
         kinds[r["recovery_kind"]] = kinds.get(r["recovery_kind"], 0) + 1
     t_prop = sorted(r["t_propose_ms"] for r in live)
     t_round = sorted(r["t_round_ms"] for r in live)
+    t_update = sorted(r["t_update_ms"] for r in live)
+    t_verify = sorted(
+        max(0.0, r["t_round_ms"] - r["t_propose_ms"]) for r in live
+    )
+    t_observed_components = sorted(
+        r["t_round_ms"] + r["t_update_ms"] for r in live
+    )
 
     def pct(xs, p):
         return xs[min(len(xs) - 1, int(p * len(xs)))] if xs else None
 
-    stale_groups: dict[int, list[float]] = {}
+    accepted_stale_groups: dict[int, list[float]] = {}
+    returned_stale_groups: dict[int, list[float]] = {}
     for r in live:
-        stale_groups.setdefault(r["missing_fresh_rows"], []).append(r["committed"])
-    tau_by_staleness = {
-        str(k): {"n": len(v), "tau": sum(v) / len(v)}
-        for k, v in sorted(stale_groups.items())
+        accepted_stale_groups.setdefault(r["missing_fresh_rows"], []).append(
+            r["committed"]
+        )
+        returned_stale_groups.setdefault(r["missing_fresh_rows"], []).append(
+            r["committed_within_limit"]
+        )
+    accepted_length_by_staleness = {
+        str(k): {"n": len(v), "accepted_length": sum(v) / len(v)}
+        for k, v in sorted(accepted_stale_groups.items())
+    }
+    returned_by_staleness = {
+        str(k): {
+            "n": len(v),
+            "returned_tokens_per_verification": sum(v) / len(v),
+        }
+        for k, v in sorted(returned_stale_groups.items())
     }
     total_out = sum(s["n_output_tokens"] for s in sample_rows)
     total_wall = sum(s["wall_s"] for s in sample_rows)
     return {
         "rounds": n_rounds,
         "samples": len(sample_rows),
-        "tau": round(tau, 4),
-        "tau_analytic": round(tau_analytic, 4) if tau_analytic else None,
-        "verify_rate": round(committed / (proposed + n_rounds), 4),
-        "accept_rate_at_k": [round(a, 4) if a is not None else None for a in alpha],
-        "committed_hist": hist,
-        "committed_pmf": pmf,
+        "accepted_length": round(accepted_length, 4),
+        "returned_tokens_per_verification": round(returned_per_verification, 4),
+        "boundary_excess_tokens": accepted_length_tokens - returned_tokens,
+        "boundary_affected_rounds": sum(
+            r["boundary_excess_tokens"] > 0 for r in live
+        ),
+        "expected_accepted_length": (
+            round(tau_analytic, 4) if tau_analytic else None
+        ),
+        "unclipped_verify_rate": round(
+            accepted_length_tokens / (proposed + n_rounds), 4
+        ),
+        "prefix_survival_at_k": [
+            round(a, 4) if a is not None else None for a in alpha
+        ],
+        "accepted_length_hist": accepted_hist,
+        "accepted_length_pmf": accepted_pmf,
+        "returned_tokens_hist": returned_hist,
+        "returned_tokens_pmf": returned_pmf,
         "recovery_kinds": kinds,
-        "correction_rank_cdf": rank_cdf,
-        "tau_by_staleness_tokens": tau_by_staleness,
+        "accepted_length_by_missing_target_feature_rows": (
+            accepted_length_by_staleness
+        ),
+        "returned_tokens_per_verification_by_missing_target_feature_rows": (
+            returned_by_staleness
+        ),
         "t_propose_ms_p50": pct(t_prop, 0.5),
+        "t_verify_ms_p50": pct(t_verify, 0.5),
+        "t_update_ms_p50": pct(t_update, 0.5),
+        "t_observed_propose_verify_update_ms_p50": pct(
+            t_observed_components, 0.5
+        ),
         "t_round_ms_p50": pct(t_round, 0.5),
         "t_round_ms_p90": pct(t_round, 0.9),
         "output_tokens": total_out,
@@ -252,7 +303,7 @@ def main():
     ap.add_argument("--stage", choices=["s0", "s1", "s1t0"], required=True)
     ap.add_argument("--target", default="Qwen/Qwen3-4B")
     ap.add_argument("--draft", default=None)
-    ap.add_argument("--out-dir", default=str(REPO_ROOT / "ssd_stale_exp" / "results"))
+    ap.add_argument("--out-dir", default=str(BENCHMARK_ROOT / "results"))
     ap.add_argument("--decode-seed", type=int, default=980406)
     ap.add_argument("--subset-seed", type=int, default=20260805)
     ap.add_argument("--samples-per-task", type=int, default=None)
@@ -268,6 +319,11 @@ def main():
     )
     ap.add_argument("--target-revision", default=None)
     ap.add_argument("--draft-revision", default=None)
+    ap.add_argument("--deepspec-git-sha", default=None)
+    ap.add_argument("--benchmark-git-sha", default=None)
+    ap.add_argument("--deepspec-git-dirty", action="store_true")
+    ap.add_argument("--benchmark-git-dirty", action="store_true")
+    ap.add_argument("--require-revisions", action="store_true")
     args = ap.parse_args()
 
     if args.require_cuda and not torch.cuda.is_available():
@@ -287,6 +343,36 @@ def main():
     temperature = cfg["temperature"]
     draft_name = args.draft or ALGO_DRAFTS_4B[args.algo]
 
+    if args.require_revisions:
+        required = {
+            "target revision": args.target_revision,
+            "draft revision": args.draft_revision,
+            "DeepSpec git SHA": args.deepspec_git_sha,
+            "benchmark git SHA": args.benchmark_git_sha,
+        }
+        missing = [name for name, value in required.items() if not value or value == "unknown"]
+        if missing:
+            raise SystemExit("missing required provenance: " + ", ".join(missing))
+    if args.confidence_threshold != 0.0:
+        raise SystemExit(
+            "this benchmark measures fixed-block raw draft quality; "
+            "--confidence-threshold must be 0"
+        )
+
+    controller_source = Path(inspect.getsourcefile(StaleController) or "").resolve()
+    if controller_source.parent != BENCHMARK_ROOT:
+        raise RuntimeError(
+            f"StaleController imported from {controller_source}, expected {BENCHMARK_ROOT}"
+        )
+    manifest_source = Path(inspect.getsourcefile(build_manifest) or "").resolve()
+    if manifest_source.parent != BENCHMARK_ROOT:
+        raise RuntimeError(
+            f"build_manifest imported from {manifest_source}, expected {BENCHMARK_ROOT}"
+        )
+    deepspec_source = Path(
+        inspect.getsourcefile(generate_decoding_sample) or ""
+    ).resolve()
+
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     if device.type != "cuda":
         dtype = torch.float32
@@ -294,7 +380,8 @@ def main():
         dtype = torch.bfloat16 if args.dtype == "bf16" else torch.float32
     print(
         f"[runner] algo={args.algo} mode={args.mode} stage={args.stage} "
-        f"device={device} target={args.target} draft={draft_name}",
+        f"device={device} target={args.target} draft={draft_name} "
+        f"benchmark_source={controller_source} deepspec_source={deepspec_source}",
         flush=True,
     )
     target, draft, tokenizer = build_models(
@@ -305,11 +392,16 @@ def main():
         target_revision=args.target_revision,
         draft_revision=args.draft_revision,
     )
+    markov_rank = int(getattr(draft.config, "markov_rank", 0))
+    if args.algo == "dflash" and markov_rank != 0:
+        raise ValueError(f"DFlash arm requires markov_rank=0, got {markov_rank}")
+    if args.algo == "dspark" and markov_rank <= 0:
+        raise ValueError(f"DSpark arm requires markov_rank>0, got {markov_rank}")
     stop_token_ids = resolve_stop_token_ids(target, tokenizer)
     K = int(draft.block_size)
 
     manifest = build_manifest(
-        dataset_root=str(REPO_ROOT / "eval_datasets"),
+        dataset_root=str(DEEPSPEC_ROOT / "eval_datasets"),
         samples_per_task=n_per_task,
         subset_seed=args.subset_seed,
     )
@@ -392,6 +484,13 @@ def main():
             sf.write(json.dumps(srow) + "\n")
             for r in controller.rounds:
                 row = {"uid": uid, **r.__dict__}
+                effective = committed_within_limit(
+                    row,
+                    {"n_input_tokens": int(input_ids.shape[1])},
+                    max_new,
+                )
+                row["committed_within_limit"] = effective
+                row["boundary_excess_tokens"] = int(r.committed) - effective
                 round_rows.append(row)
                 rf.write(json.dumps(row) + "\n")
             if (uid + 1) % 8 == 0:
@@ -406,13 +505,21 @@ def main():
 
     import transformers
 
-    try:
-        git_sha = sp.check_output(
-            ["git", "-C", str(REPO_ROOT), "rev-parse", "--short", "HEAD"],
-            encoding="utf-8",
-        ).strip()
-    except Exception:
-        git_sha = "unknown"
+    def git_sha(path: Path) -> str:
+        try:
+            return sp.check_output(
+                ["git", "-C", str(path), "rev-parse", "HEAD"],
+                encoding="utf-8",
+                stderr=sp.DEVNULL,
+            ).strip()
+        except Exception:
+            return "unknown"
+
+    deepspec_git_sha = args.deepspec_git_sha or git_sha(DEEPSPEC_ROOT)
+    benchmark_git_sha = args.benchmark_git_sha or git_sha(BENCHMARK_ROOT)
+    source_hash = hashlib.sha256()
+    for name in ("runner.py", "stale_core.py", "manifest.py", "benchmark_stats.py"):
+        source_hash.update((BENCHMARK_ROOT / name).read_bytes())
     manifest_sha = hashlib.sha256(
         json.dumps(manifest, sort_keys=True).encode()
     ).hexdigest()[:16]
@@ -429,6 +536,8 @@ def main():
             "draft_revision": args.draft_revision,
             "temperature": temperature,
             "max_new_tokens": max_new,
+            "samples_per_task": n_per_task,
+            "confidence_threshold": args.confidence_threshold,
             "decode_seed": args.decode_seed,
             "subset_seed": args.subset_seed,
             "manifest_sha256": manifest_sha,
@@ -439,7 +548,14 @@ def main():
             ),
             "torch_version": torch.__version__,
             "transformers_version": transformers.__version__,
-            "repo_git_sha": git_sha,
+            "deepspec_git_sha": deepspec_git_sha,
+            "benchmark_git_sha": benchmark_git_sha,
+            "deepspec_git_dirty": args.deepspec_git_dirty,
+            "benchmark_git_dirty": args.benchmark_git_dirty,
+            "benchmark_source_sha256": source_hash.hexdigest(),
+            "benchmark_source": str(controller_source),
+            "manifest_source": str(manifest_source),
+            "deepspec_source": str(deepspec_source),
         }
     )
     if device.type == "cuda":

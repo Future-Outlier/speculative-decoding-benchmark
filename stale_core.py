@@ -1,4 +1,4 @@
-"""Staleness treatments for DSpark/DFlash block drafts (SSD hit-path study).
+"""One-round-late feature treatments for DSpark/DFlash block drafts.
 
 Modes
 -----
@@ -6,11 +6,11 @@ fresh    stock behavior: after each verify, the newly committed tokens'
          target features are appended to the draft context immediately.
          Delegates the block forward to the repo's forward_dspark_draft_block
          so it is bit-identical to the stock eval path.
-gap      T1 (pessimistic bracket): feature chunks arrive one round late.
+gap      omission proxy: feature chunks arrive one round late.
          While drafting round r+1 the context has NO rows for the tokens
          committed in round r (a positional hole of ell_r tokens); those
          rows are appended one round later.
-self_kv  T2 (optimistic/leaky bracket): the hole is filled with the draft's
+self_kv  retained-mask-KV proxy: the hole is filled with the draft's
          own proposal K/V rows (mask-conditioned) for exactly one round,
          after which they are surgically removed and replaced by the
          late-arriving fresh feature rows.
@@ -19,9 +19,11 @@ Invariants asserted every round:
   cache.get_seq_length() == controller.rows
   (self_kv) at most one outstanding pseudo span; spans disjoint by position.
 
-The draft_probs used for verification are always the probs of the proposal
-actually sampled under the treatment, so rejection sampling stays exact and
-temperature-0 output must equal target-only greedy for every mode.
+The draft_probs used for verification are always the probabilities of the
+proposal sampled under the treatment.  This preserves the speculative-
+sampling distribution in exact arithmetic; the implementation still has the
+floating-point guards used by DeepSpec.  At temperature 0, every mode must
+match target-only greedy output.
 """
 from __future__ import annotations
 
@@ -143,12 +145,10 @@ class RoundLog:
     accepted_draft: int
     committed: int
     missing_fresh_rows: int      # positions with no fresh feature row at propose
-    hole_rows: int               # positions with no row at all (gap: ==missing; self_kv: 0 after round 1)
+    hole_rows: int               # no-row positions (gap: ==missing; self_kv: 0 or 1)
     rho: list[float]
     e_len_analytic: float | None
     recovery_kind: str           # "correction" | "bonus" | "eos"
-    recovery_rank: int | None
-    q_top1_is_z: bool | None
     t_propose_ms: float
     t_round_ms: float
     t_update_ms: float = 0.0
@@ -324,8 +324,7 @@ class StaleController:
             assert pb is not None
             # Block rows exist for positions cur_start..cur_start+K-1 only.
             # On a full accept (a == K) the last committed position has no
-            # self-KV row — a genuine 1-row hole until the fresh chunk lands,
-            # matching what a real SSD draft would have.
+            # self-KV row, leaving a one-row hole until the fresh chunk lands.
             keep = min(a + 1, self.K)
             self.cache.crop(pb["off"] + keep)
             self.rows = pb["off"] + keep
@@ -341,8 +340,9 @@ class StaleController:
 
         self.last_committed = ell
         self._sync()
-        # post_verify already ran for this round; attribute surgery/crop cost
-        # to it so t_round + t_update covers the full cycle.
+        # Keep cache surgery/feature-update time separate from propose+verify.
+        # The interval between callbacks and post-verify diagnostics is not
+        # captured, so these component timers must not be called a full cycle.
         if self.rounds:
             self.rounds[-1].t_update_ms = round(
                 (time.perf_counter() - t_update_start) * 1e3, 3
@@ -379,15 +379,11 @@ class StaleController:
                 e_len = float(1.0 + rho.cumprod(0).sum().item())
 
         if verification.terminated_by_stop_token:
-            kind, rank, top1 = "eos", None, None
+            kind = "eos"
         elif a < m:
             kind = "correction"
-            q_a = proposal.draft_probs[0, a]
-            z = int(verification.next_token[0].item())
-            rank = int((q_a > q_a[z]).sum().item()) + 1
-            top1 = rank == 1
         else:
-            kind, rank, top1 = "bonus", None, None
+            kind = "bonus"
 
         if self.mode == "fresh":
             missing = 0
@@ -414,8 +410,6 @@ class StaleController:
                 rho=rho_list,
                 e_len_analytic=e_len,
                 recovery_kind=kind,
-                recovery_rank=rank,
-                q_top1_is_z=top1,
                 t_propose_ms=round(self._t_propose_ms, 3),
                 t_round_ms=round(t_round_ms, 3),
             )
