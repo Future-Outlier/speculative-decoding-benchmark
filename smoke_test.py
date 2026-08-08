@@ -4,20 +4,23 @@ Checks, for each mode in {fresh, gap, self_kv} x {markov on/off}:
   1. temperature 0: committed output identical to target-only greedy
      (lossless property must hold under any treatment)
   2. controller invariants hold (asserted inside stale_core)
-  3. gap logs missing_fresh_rows > 0 from round 2; self_kv hole_rows == 0
+  3. gap logs missing_fresh_rows > 0 from round 2; self_kv hole_rows <= 1
   4. temperature 1 runs end-to-end without error
 
-Run:  python ssd_stale_exp/smoke_test.py
+Run:  python speculative-decoding-benchmark/smoke_test.py
 """
 from __future__ import annotations
 
+import inspect
 import sys
 from pathlib import Path
 
 import torch
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(REPO_ROOT))
+BENCHMARK_ROOT = Path(__file__).resolve().parent
+DEEPSPEC_ROOT = BENCHMARK_ROOT.parent
+sys.path.insert(0, str(DEEPSPEC_ROOT))
+sys.path.insert(0, str(BENCHMARK_ROOT))
 
 from transformers.models.qwen3.configuration_qwen3 import Qwen3Config  # noqa: E402
 from transformers.models.qwen3.modeling_qwen3 import Qwen3ForCausalLM  # noqa: E402
@@ -26,7 +29,19 @@ from deepspec.eval.base_evaluator import resolve_stop_token_ids  # noqa: E402
 from deepspec.modeling.dspark.qwen3 import Qwen3DSparkModel  # noqa: E402
 from deepspec.utils import seed_all  # noqa: E402
 
-from ssd_stale_exp.runner import run_one_sample, target_greedy  # noqa: E402
+if __package__:
+    from .runner import (  # type: ignore[import-not-found]  # noqa: E402
+        run_one_sample,
+        target_greedy,
+    )
+else:
+    from runner import run_one_sample, target_greedy  # noqa: E402
+
+RUNNER_SOURCE = Path(
+    inspect.getsourcefile(inspect.unwrap(run_one_sample)) or ""
+).resolve()
+if RUNNER_SOURCE.parent != BENCHMARK_ROOT:
+    raise RuntimeError(f"runner imported from {RUNNER_SOURCE}, expected {BENCHMARK_ROOT}")
 
 VOCAB = 257
 HID = 64

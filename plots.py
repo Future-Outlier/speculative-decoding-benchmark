@@ -1,12 +1,11 @@
-"""Turn S1 results into the five figures + a paired-bootstrap summary table.
+"""Turn proxy results into four figures and a cluster-bootstrap summary.
 
-Usage: python ssd_stale_exp/plots.py --results <dir with s1_*.jsonl> --out <dir>
+Usage: python plots.py --results <dir with s1_*.jsonl> --out <dir>
 """
 from __future__ import annotations
 
 import argparse
 import json
-import random
 from collections import defaultdict
 from pathlib import Path
 
@@ -14,6 +13,23 @@ import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
+
+try:
+    from .benchmark_stats import (  # type: ignore[import-not-found]
+        add_effective_committed,
+        paired_cluster_bootstrap_diff,
+        paired_cluster_bootstrap_ratio,
+        pooled_value_per_verification,
+        validate_paired_samples,
+    )
+except ImportError:
+    from benchmark_stats import (
+        add_effective_committed,
+        paired_cluster_bootstrap_diff,
+        paired_cluster_bootstrap_ratio,
+        pooled_value_per_verification,
+        validate_paired_samples,
+    )
 
 ALGOS = ("dflash", "dspark")
 MODES = ("fresh", "gap", "self_kv")
@@ -24,43 +40,54 @@ K = 7
 PREFIX = "s1"
 
 
-def load_rounds(results: Path, algo: str, mode: str) -> list[dict]:
-    path = results / f"{PREFIX}_{algo}_{mode}.rounds.jsonl"
-    rows = []
+def load_jsonl(path: Path) -> list[dict]:
     with path.open() as fh:
-        for line in fh:
-            rows.append(json.loads(line))
-    return rows
+        return [json.loads(line) for line in fh]
 
 
-def per_sample_tau(rows: list[dict]) -> dict[int, float]:
-    agg = defaultdict(lambda: [0, 0])
-    for r in rows:
-        agg[r["uid"]][0] += r["committed"]
-        agg[r["uid"]][1] += 1
-    return {uid: c / n for uid, (c, n) in agg.items()}
+def load_arm(
+    results: Path, algo: str, mode: str
+) -> tuple[list[dict], dict[int, dict], dict]:
+    stem = f"{PREFIX}_{algo}_{mode}"
+    rows = load_jsonl(results / f"{stem}.rounds.jsonl")
+    samples = {
+        int(row["uid"]): row
+        for row in load_jsonl(results / f"{stem}.samples.jsonl")
+    }
+    summary = json.loads((results / f"{stem}.summary.json").read_text())
+    max_new_tokens = int(summary["max_new_tokens"])
+    derived_rows = add_effective_committed(rows, samples, max_new_tokens)
+    for original, derived in zip(rows, derived_rows):
+        if (
+            "committed_within_limit" in original
+            and int(original["committed_within_limit"])
+            != int(derived["committed_within_limit"])
+        ):
+            raise ValueError(
+                f"{stem}: uid={original['uid']} round={original['round_idx']} "
+                "has inconsistent committed_within_limit"
+            )
+    rows = derived_rows
+
+    effective_by_uid = defaultdict(int)
+    for row in rows:
+        effective_by_uid[int(row["uid"])] += int(row["committed_within_limit"])
+    for uid, sample in samples.items():
+        returned_after_initial = max(0, int(sample["n_output_tokens"]) - 1)
+        if effective_by_uid[uid] != returned_after_initial:
+            raise ValueError(
+                f"{stem}: uid={uid} effective committed={effective_by_uid[uid]} "
+                f"but returned after initial token={returned_after_initial}"
+            )
+    if summary.get("algo") != algo or summary.get("mode") != mode:
+        raise ValueError(
+            f"{stem}: summary identity is algo={summary.get('algo')}, "
+            f"mode={summary.get('mode')}"
+        )
+    return rows, samples, summary
 
 
-def bootstrap_diff(
-    tau_a: dict[int, float], tau_b: dict[int, float], iters: int = 4000
-) -> tuple[float, float, float]:
-    uids = sorted(set(tau_a) & set(tau_b))
-    diffs = [tau_a[u] - tau_b[u] for u in uids]
-    point = sum(diffs) / len(diffs)
-    rng = random.Random(0)
-    stats = []
-    for _ in range(iters):
-        sample = [diffs[rng.randrange(len(diffs))] for _ in diffs]
-        stats.append(sum(sample) / len(sample))
-    stats.sort()
-    return point, stats[int(0.025 * iters)], stats[int(0.975 * iters)]
-
-
-def pooled_tau(rows: list[dict]) -> float:
-    return sum(r["committed"] for r in rows) / len(rows)
-
-
-def alpha_k(rows: list[dict]) -> list[float | None]:
+def prefix_survival(rows: list[dict]) -> list[float | None]:
     out = []
     for k in range(K):
         prop = sum(1 for r in rows if r["effective_proposal_len"] > k)
@@ -69,10 +96,10 @@ def alpha_k(rows: list[dict]) -> list[float | None]:
     return out
 
 
-def pmf(rows: list[dict]) -> list[float]:
+def pmf(rows: list[dict], value_key: str) -> list[float]:
     hist = [0] * (K + 2)
     for r in rows:
-        hist[min(r["committed"], K + 1)] += 1
+        hist[min(r[value_key], K + 1)] += 1
     n = len(rows)
     return [c / n for c in hist]
 
@@ -82,48 +109,140 @@ def main():
     ap.add_argument("--results", required=True)
     ap.add_argument("--out", required=True)
     ap.add_argument("--prefix", default="s1")
+    ap.add_argument(
+        "--metric",
+        choices=("accepted_length", "returned_tokens"),
+        default="accepted_length",
+        help="accepted_length is the perfect-coverage surrogate quality metric; "
+        "returned_tokens includes the finite-request boundary",
+    )
     args = ap.parse_args()
     global PREFIX
     PREFIX = args.prefix
     results = Path(args.results)
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
+    value_key = (
+        "committed" if args.metric == "accepted_length" else "committed_within_limit"
+    )
+    metric_label = (
+        "unclipped accepted length / verification"
+        if args.metric == "accepted_length"
+        else "returned tokens / verification"
+    )
+    metric_short_label = (
+        "accepted length" if args.metric == "accepted_length" else "returned tokens"
+    )
 
-    data = {
-        (a, m): load_rounds(results, a, m) for a in ALGOS for m in MODES
-    }
+    data = {}
+    reference_samples = None
+    reference_summary = None
+    common_summary_fields = (
+        "stage",
+        "target",
+        "target_revision",
+        "temperature",
+        "max_new_tokens",
+        "decode_seed",
+        "subset_seed",
+        "manifest_sha256",
+        "dtype",
+        "gpu_name",
+        "torch_version",
+        "transformers_version",
+        "confidence_threshold",
+        "deepspec_git_sha",
+        "benchmark_source_sha256",
+    )
+    for algo in ALGOS:
+        algo_draft = None
+        for mode in MODES:
+            rows, samples, summary = load_arm(results, algo, mode)
+            if reference_samples is None:
+                reference_samples = samples
+                reference_summary = summary
+            else:
+                validate_paired_samples(reference_samples, samples)
+                for field in common_summary_fields:
+                    if summary.get(field) != reference_summary.get(field):
+                        raise ValueError(
+                            f"incompatible arm summary field {field}: "
+                            f"{summary.get(field)!r} != {reference_summary.get(field)!r}"
+                        )
+            draft_identity = (summary.get("draft"), summary.get("draft_revision"))
+            if algo_draft is None:
+                algo_draft = draft_identity
+            elif draft_identity != algo_draft:
+                raise ValueError(f"{algo} modes use different draft revisions")
+            data[(algo, mode)] = rows
 
     # 1. paired tau with bootstrap CI ------------------------------------
     fig, axes = plt.subplots(1, 2, figsize=(9, 3.6), sharey=True)
     table_lines = []
     for ax, algo in zip(axes, ALGOS):
-        taus = [pooled_tau(data[(algo, m)]) for m in MODES]
+        taus = [
+            pooled_value_per_verification(data[(algo, m)], value_key)
+            for m in MODES
+        ]
         ax.bar(MODES, taus, color=[COLORS[m] for m in MODES], width=0.6)
         for i, t in enumerate(taus):
             ax.text(i, t + 0.04, f"{t:.2f}", ha="center", fontsize=9)
-        fresh_ps = per_sample_tau(data[(algo, "fresh")])
         for m in ("gap", "self_kv"):
-            d, lo, hi = bootstrap_diff(fresh_ps, per_sample_tau(data[(algo, m)]))
-            table_lines.append(
-                f"{algo:7s} fresh-vs-{m:8s} dtau={d:+.3f}  95%CI [{lo:+.3f}, {hi:+.3f}]"
+            d, lo, hi = paired_cluster_bootstrap_diff(
+                data[(algo, "fresh")],
+                data[(algo, m)],
+                value_key=value_key,
             )
+            retention, retention_lo, retention_hi = paired_cluster_bootstrap_ratio(
+                data[(algo, "fresh")],
+                data[(algo, m)],
+                value_key=value_key,
+            )
+            table_lines.append(
+                f"{algo:7s} fresh-vs-{m:8s} pooled_delta={d:+.3f}  "
+                f"95%CI [{lo:+.3f}, {hi:+.3f}]  "
+                f"quality_retention={retention:.3f} "
+                f"95%CI [{retention_lo:.3f}, {retention_hi:.3f}]"
+            )
+        nonboundary_fresh = [
+            row for row in data[(algo, "fresh")]
+            if int(row["boundary_excess_tokens"]) == 0
+        ]
+        nonboundary_self = [
+            row for row in data[(algo, "self_kv")]
+            if int(row["boundary_excess_tokens"]) == 0
+        ]
+        sensitivity, sensitivity_lo, sensitivity_hi = (
+            paired_cluster_bootstrap_ratio(
+                nonboundary_fresh,
+                nonboundary_self,
+                value_key=value_key,
+            )
+        )
+        table_lines.append(
+            f"{algo:7s} self_kv/fresh excluding boundary-affected rounds "
+            f"quality_retention={sensitivity:.3f} "
+            f"95%CI [{sensitivity_lo:.3f}, {sensitivity_hi:.3f}]"
+        )
         ax.set_title(algo)
-        ax.set_ylabel("tau (tokens/round)")
-    fig.suptitle("Accepted length: fresh vs stale (S1, Qwen3-4B, temp 1.0)")
+        ax.set_ylabel(metric_label)
+    fig.suptitle(
+        "Perfect-coverage retained-mask-KV quality surrogate (Qwen3-4B)"
+    )
     fig.tight_layout()
     fig.savefig(out / "tau_paired.png", dpi=150)
 
-    # 2. alpha_k ----------------------------------------------------------
+    # 2. cumulative prefix survival --------------------------------------
     fig, axes = plt.subplots(1, 2, figsize=(9, 3.6), sharey=True)
     for ax, algo in zip(axes, ALGOS):
         for m in MODES:
-            ys = alpha_k(data[(algo, m)])
+            ys = prefix_survival(data[(algo, m)])
             ax.plot(range(1, K + 1), ys, marker="o", label=m, color=COLORS[m])
         ax.set_title(algo)
         ax.set_xlabel("position k")
-        ax.set_ylabel("alpha_k = P(accept k | reached k)")
+        ax.set_ylabel("P(first k accepted | effective proposal reaches k)")
         ax.legend()
-    fig.suptitle("Per-position cumulative acceptance")
+    fig.suptitle("Conditional cumulative accepted-prefix survival")
     fig.tight_layout()
     fig.savefig(out / "alpha_k.png", dpi=150)
 
@@ -131,55 +250,38 @@ def main():
     fig, axes = plt.subplots(1, 2, figsize=(9, 3.6), sharey=True)
     for ax, algo in zip(axes, ALGOS):
         for m in MODES:
-            ys = pmf(data[(algo, m)])
+            ys = pmf(data[(algo, m)], value_key)
             ax.plot(range(len(ys)), ys, marker="s", label=m, color=COLORS[m])
         ax.set_title(algo)
-        ax.set_xlabel("committed tokens per round")
+        ax.set_xlabel(metric_short_label)
         ax.set_ylabel("P(L = l)")
         ax.legend()
-    fig.suptitle("Committed-length distribution (drives SSD fan-out)")
+    fig.suptitle(f"Distribution of {metric_label}")
     fig.tight_layout()
     fig.savefig(out / "pmf.png", dpi=150)
 
-    # 4. correction recovery-rank CDF ------------------------------------
-    fig, axes = plt.subplots(1, 2, figsize=(9, 3.6), sharey=True)
-    ks = [1, 2, 3, 4, 6, 8, 12, 16, 24, 32]
-    for ax, algo in zip(axes, ALGOS):
-        for m in MODES:
-            ranks = [
-                r["recovery_rank"]
-                for r in data[(algo, m)]
-                if r["recovery_kind"] == "correction"
-            ]
-            ys = [sum(1 for x in ranks if x <= k) / len(ranks) for k in ks]
-            ax.plot(ks, ys, marker="o", label=m, color=COLORS[m])
-        ax.set_xscale("log")
-        ax.set_title(algo)
-        ax.set_xlabel("fan-out per depth F (top-F)")
-        ax.set_ylabel("P(correction token in top-F)")
-        ax.legend()
-    fig.suptitle("Recovery-token coverage vs fan-out (SSD p_hit driver)")
-    fig.tight_layout()
-    fig.savefig(out / "rank_cdf.png", dpi=150)
-
-    # 5. tau vs staleness tokens -----------------------------------------
+    # 4. association with missing target-feature rows --------------------
     fig, axes = plt.subplots(1, 2, figsize=(9, 3.6), sharey=True)
     for ax, algo in zip(axes, ALGOS):
         for m in ("gap", "self_kv"):
             groups = defaultdict(list)
             for r in data[(algo, m)]:
-                groups[r["missing_fresh_rows"]].append(r["committed"])
+                groups[r["missing_fresh_rows"]].append(
+                    r[value_key]
+                )
             xs = sorted(k for k in groups if len(groups[k]) >= 20)
             ys = [sum(groups[x]) / len(groups[x]) for x in xs]
             ax.plot(xs, ys, marker="o", label=m, color=COLORS[m])
-        fresh_tau = pooled_tau(data[(algo, "fresh")])
+        fresh_tau = pooled_value_per_verification(
+            data[(algo, "fresh")], value_key
+        )
         ax.axhline(fresh_tau, ls="--", color=COLORS["fresh"], label="fresh mean")
         ax.set_title(algo)
-        ax.set_xlabel("missing fresh rows at propose (prev round l)")
-        ax.set_ylabel("tau")
+        ax.set_xlabel("missing target-feature rows\n(previous-round outcome)")
+        ax.set_ylabel(metric_label)
         ax.legend()
-    fig.suptitle("Degradation vs hole size (groups with n>=20)")
-    fig.tight_layout()
+    fig.suptitle("Association with missing target-feature rows (n>=20 groups)")
+    fig.tight_layout(rect=(0, 0, 1, 0.93))
     fig.savefig(out / "tau_vs_staleness.png", dpi=150)
 
     report = "\n".join(table_lines)

@@ -1,4 +1,4 @@
-"""Break-even figure: required stale accepted length + batch-size attenuation.
+"""Two explicitly hypothetical renewal models for sensitivity analysis.
 
 Model (lockstep batch b, chain drafting):
   q = p_hit^b (batch skips JIT drafting only when every sequence hits)
@@ -8,9 +8,9 @@ Model (lockstep batch b, chain drafting):
 Break-even r* = 1/(1+x): independent of p_hit and b (miss rounds cancel).
 Batch size only attenuates the magnitude via q = p^b.
 
-Also numerically checks the mixed-miss variant (hitting sequences keep their
-stale proposals on miss rounds): its break-even is >= 1/(1+x), so the simple
-model is the SSD-favorable lower bound.
+The mixed-miss variant assumes hitting sequences keep stale proposals on miss
+rounds and missing sequences run a fresh neural backup.  Neither model is a
+general SSD theorem or a measurement of the official implementation.
 
 Usage: python breakeven_plot.py --out figs/breakeven.png
 """
@@ -27,12 +27,13 @@ import numpy as np  # noqa: E402
 BLUE, ORANGE, AQUA = "#2a78d6", "#eb6834", "#1baf7a"
 INK, MUTED = "#0b0b0b", "#52514e"
 
-# Measured on A10 (p50): (x = t_d/t_v, r = tau_gap/tau_fresh)
+# Legacy A10 component timings and unclipped accepted-length proxy ratios.  The
+# renewal model is steady-state, so finite-request boundary clipping is excluded.
 MEASURED = [
-    ("DFlash t=1", 7.2 / 36.3, 0.587, ORANGE, "o"),
-    ("DFlash t=0", 7.0 / 35.7, 0.584, ORANGE, "^"),
-    ("DSpark t=1", 9.1 / 36.6, 0.590, AQUA, "o"),
-    ("DSpark t=0", 8.2 / 35.8, 0.590, AQUA, "^"),
+    ("DFlash t=1", 7.2 / 36.3, 0.595, ORANGE, "o"),
+    ("DFlash t=0", 7.0 / 35.7, 0.600, ORANGE, "^"),
+    ("DSpark t=1", 9.1 / 36.6, 0.618, AQUA, "o"),
+    ("DSpark t=0", 8.2 / 35.8, 0.620, AQUA, "^"),
 ]
 
 
@@ -77,27 +78,21 @@ def main():
     thr = 1 / (1 + xs)
     ax1.plot(xs, thr, color=BLUE, linewidth=2, label="break-even  r* = 1/(1+x)")
     ax1.fill_between(xs, thr, 1.35, color=BLUE, alpha=0.08)
-    ax1.text(0.58, 1.02, "SSD pays (above line)", color=BLUE, fontsize=9)
-    ax1.text(0.60, 0.47, "SSD loses", color=MUTED, fontsize=9)
+    ax1.text(0.58, 1.02, "toy model above parity", color=BLUE, fontsize=9)
+    ax1.text(0.60, 0.47, "toy model below parity", color=MUTED, fontsize=9)
 
     for name, x, r, c, m in MEASURED:
         ax1.scatter([x], [r], color=c, marker=m, s=55, zorder=3)
     ax1.annotate(
-        "measured: DFlash / DSpark\n(both temps, r = 0.58–0.59)",
-        xy=(0.225, 0.588), xytext=(0.33, 0.63), fontsize=9, color=INK,
+        "retained-mask-KV surrogate\n(two tested temperatures)",
+        xy=(0.225, 0.605), xytext=(0.33, 0.66), fontsize=9, color=INK,
         arrowprops=dict(arrowstyle="-", color=MUTED, lw=0.8),
     )
-    ax1.axvspan(0.7, 1.0, color=AQUA, alpha=0.10)
-    ax1.text(0.71, 1.24, "SSD-paper regime\n(7-step 1B AR draft,\nstandalone: r ≈ 1)",
-             fontsize=8.5, color="#0f7a55")
-    for xv, lbl in ((0.33, "4B"), (0.23, "14B")):
-        ax1.axvline(xv, color=MUTED, linewidth=0.8, linestyle=":", alpha=0.7)
-    ax1.text(0.235, 1.27, "optimized-stack x\n(14B / 4B)", fontsize=8, color=MUTED)
     ax1.set_xlabel("x = t_draft / t_verify")
     ax1.set_ylabel("required  τ_stale / τ_fresh")
     ax1.set_xlim(0, 1.2)
     ax1.set_ylim(0.4, 1.35)
-    ax1.set_title("How good must stale acceptance be?", fontsize=11)
+    ax1.set_title("p_hit=1 toy-model threshold", fontsize=11)
     ax1.legend(loc="lower left", fontsize=8.5, frameon=False)
 
     # Panel B: attenuation with batch size --------------------------------
@@ -105,19 +100,17 @@ def main():
     p = 0.9
     for r, c, lbl in ((1.00, BLUE, "r = 1.00 (no degradation)"),
                       (0.95, AQUA, "r = 0.95"),
-                      (0.59, ORANGE, "r = 0.59 (measured)")):
+                      (0.62, ORANGE, "r = 0.62 (surrogate)")):
         ys = r_mixed(r, x_ds, p, bs)
         ax2.plot(bs, ys, color=c, linewidth=2)
         ax2.text(bs[-1] * 1.03, ys[-1], lbl, color=c, fontsize=8.5, va="center")
     ax2.axhline(1.0, color=MUTED, linewidth=1.0, linestyle="--")
     ax2.text(1.05, 1.007, "parity vs sync SD", color=MUTED, fontsize=8)
-    ax2.axhline(1.25, color=MUTED, linewidth=0.8, linestyle=":")
-    ax2.text(1.05, 1.257, "per-GPU parity (4+1 GPUs)", color=MUTED, fontsize=8)
     ax2.set_xscale("log", base=2)
     ax2.set_xticks([1, 2, 4, 8, 16, 32, 64])
     ax2.set_xticklabels([1, 2, 4, 8, 16, 32, 64])
     ax2.set_xlabel(f"batch size b   (per-seq p_hit = {p}, x = {x_ds})")
-    ax2.set_ylabel("R_ssd / R_sync")
+    ax2.set_ylabel("modeled R_async / R_sync")
     ax2.set_xlim(1, 130)
     ax2.set_ylim(0.55, 1.32)
     ax2.text(
@@ -126,7 +119,7 @@ def main():
         "(b = 1, 8, 16: 0.80, 0.90, 0.96)",
         fontsize=8, color=MUTED,
     )
-    ax2.set_title("Batch size raises the bar and shrinks the prize", fontsize=11)
+    ax2.set_title("Hypothetical mixed neural-backup model", fontsize=11)
 
     fig.tight_layout()
     fig.savefig(args.out, dpi=150, bbox_inches="tight")

@@ -1,17 +1,17 @@
 """Modal app for the SSD staleness experiment (S0 correctness, S1 signal).
 
 Usage:
-  modal run ssd_stale_exp/modal_app.py --action download
-  modal run ssd_stale_exp/modal_app.py --action s0
-  modal run ssd_stale_exp/modal_app.py --action s1
-  modal run ssd_stale_exp/modal_app.py --action report
+  modal run speculative-decoding-benchmark/modal_app.py --action download
+  modal run speculative-decoding-benchmark/modal_app.py --action s0
+  modal run speculative-decoding-benchmark/modal_app.py --action s1
+  modal run speculative-decoding-benchmark/modal_app.py --action report
 
-Budget model (post codex review):
+Budget model:
   - cumulative cost persists in /results/costlog.json
   - every run PRE-CHARGES a worst-case reserve before launching, then adjusts
     to actual afterwards, so hangs / OOMs / Modal timeouts stay accounted for
   - a run only starts if (spent + its full reserve) fits inside BUDGET_USD
-  - GPU rate is inflated by OVERHEAD to cover CPU/mem/cold-start
+  - the estimate includes configured GPU/CPU/memory and a regional safety factor
   - each subprocess has its own hard timeout; any failure aborts the stage
 """
 from __future__ import annotations
@@ -27,21 +27,38 @@ import modal
 
 APP_NAME = "ssd-stale-exp"
 GPU_KIND = os.environ.get("MODAL_GPU", "A10")
-# Official on-demand rates, modal.com/pricing (fetched 2026-08-05), USD/h.
-GPU_RATE_USD_H = {
-    "A10": 1.10,
-    "L4": 0.80,
-    "L40S": 1.95,
-    "A100-40GB": 2.10,
-    "A100-80GB": 2.50,
-    "H100": 3.95,
+# Official base rates, modal.com/pricing (fetched 2026-08-08), USD/s.
+GPU_RATE_USD_S = {
+    "A10": 0.000306,
+    "L4": 0.000222,
+    "L40S": 0.000542,
+    "A100-40GB": 0.000583,
+    "A100-80GB": 0.000694,
+    "H100": 0.001097,
 }
-BUDGET_USD = float(os.environ.get("STALE_BUDGET_USD", "8.0"))
-OVERHEAD = 1.15  # CPU/mem/cold-start on top of the GPU rate
-RATE = GPU_RATE_USD_H[GPU_KIND] * OVERHEAD
+CPU_CORES = 4
+MEMORY_GIB = 16
+CPU_RATE_USD_CORE_S = 0.0000131
+MEMORY_RATE_USD_GIB_S = 0.00000222
+REGIONAL_SAFETY_FACTOR = 1.75
+HARD_BUDGET_USD = 3.0
+BUDGET_USD = float(os.environ.get("STALE_BUDGET_USD", str(HARD_BUDGET_USD)))
+if not 0.0 < BUDGET_USD <= HARD_BUDGET_USD:
+    raise ValueError(
+        f"STALE_BUDGET_USD must be in (0, {HARD_BUDGET_USD}], got {BUDGET_USD}"
+    )
+RATE_USD_S = (
+    GPU_RATE_USD_S[GPU_KIND]
+    + CPU_CORES * CPU_RATE_USD_CORE_S
+    + MEMORY_GIB * MEMORY_RATE_USD_GIB_S
+) * REGIONAL_SAFETY_FACTOR
+DOWNLOAD_RATE_USD_S = (
+    CPU_CORES * CPU_RATE_USD_CORE_S + 8 * MEMORY_RATE_USD_GIB_S
+) * REGIONAL_SAFETY_FACTOR
 
 # Per-run worst-case wall-clock reserve (also the subprocess timeout).
-RUN_RESERVE_S = {"s0": 1200, "s1": 3600, "s1t0": 3600}
+RUN_RESERVE_S = {"s0": 300, "s1": 600, "s1t0": 600}
+DOWNLOAD_RESERVE_S = 1800
 
 TARGET = "Qwen/Qwen3-4B"
 DRAFTS = {
@@ -50,7 +67,36 @@ DRAFTS = {
 }
 MODES = ("fresh", "gap", "self_kv")
 
-LOCAL_REPO = Path(__file__).resolve().parent.parent
+LOCAL_BENCHMARK = Path(__file__).resolve().parent
+LOCAL_DEEPSPEC = LOCAL_BENCHMARK.parent
+
+
+def _local_git_sha(path: Path) -> str:
+    return subprocess.check_output(
+        ["git", "-C", str(path), "rev-parse", "HEAD"],
+        encoding="utf-8",
+    ).strip()
+
+
+def _local_git_dirty(path: Path, pathspec: tuple[str, ...] = ()) -> bool:
+    cmd = ["git", "-C", str(path), "status", "--porcelain"]
+    if pathspec:
+        cmd.extend(["--", *pathspec])
+    return bool(
+        subprocess.check_output(
+            cmd,
+            encoding="utf-8",
+        ).strip()
+    )
+
+
+DEEPSPEC_GIT_SHA = _local_git_sha(LOCAL_DEEPSPEC)
+BENCHMARK_GIT_SHA = _local_git_sha(LOCAL_BENCHMARK)
+DEEPSPEC_GIT_DIRTY = _local_git_dirty(
+    LOCAL_DEEPSPEC,
+    ("deepspec", "eval_datasets", "requirements.txt", "pyproject.toml"),
+)
+BENCHMARK_GIT_DIRTY = _local_git_dirty(LOCAL_BENCHMARK)
 
 app = modal.App(APP_NAME)
 
@@ -68,17 +114,34 @@ image = (
         "PyYAML==6.0.3",
         "hf_transfer",
     )
-    .env({"PYTHONPATH": "/repo", "HF_HOME": "/hf", "HF_HUB_ENABLE_HF_TRANSFER": "1"})
+    .env(
+        {
+            "PYTHONPATH": "/repo",
+            "DEEPSPEC_ROOT": "/repo",
+            "HF_HOME": "/hf",
+            "HF_HUB_ENABLE_HF_TRANSFER": "1",
+        }
+    )
     .add_local_dir(
-        str(LOCAL_REPO),
-        remote_path="/repo",
+        str(LOCAL_DEEPSPEC / "deepspec"),
+        remote_path="/repo/deepspec",
+        ignore=[
+            "**/__pycache__/**",
+        ],
+    )
+    .add_local_dir(
+        str(LOCAL_DEEPSPEC / "eval_datasets"),
+        remote_path="/repo/eval_datasets",
+    )
+    .add_local_dir(
+        str(LOCAL_BENCHMARK),
+        remote_path="/repo/benchmark",
         ignore=[
             ".git",
             ".git/**",
             "**/__pycache__/**",
-            ".venv/**",
-            "assets/**",
-            "ssd_stale_exp/results/**",
+            "results/**",
+            "figs/**",
         ],
     )
 )
@@ -91,6 +154,9 @@ PINS = Path("/hf/pinned_revisions.json")
 
 
 def _read_costlog() -> dict:
+    # A reused Modal container does not automatically observe commits made by
+    # another container.  This refreshes the volume before every guard read.
+    results_vol.reload()
     if COSTLOG.exists():
         return json.loads(COSTLOG.read_text())
     return {"usd": 0.0, "entries": []}
@@ -107,20 +173,43 @@ def _append_costlog(kind: str, usd: float) -> dict:
     return log
 
 
-@app.function(image=image, volumes={"/hf": hf_vol}, timeout=3600, cpu=4, memory=8192)
+@app.function(
+    image=image,
+    volumes={"/hf": hf_vol, "/results": results_vol},
+    timeout=DOWNLOAD_RESERVE_S,
+    cpu=CPU_CORES,
+    memory=8192,
+    max_containers=1,
+)
 def download_models():
     from huggingface_hub import HfApi, snapshot_download
 
-    api = HfApi()
-    pins = {}
-    for repo in [TARGET, *DRAFTS.values()]:
-        sha = api.model_info(repo).sha
-        print(f"[download] {repo} @ {sha}", flush=True)
-        snapshot_download(repo, revision=sha)
-        pins[repo] = sha
-    PINS.write_text(json.dumps(pins, indent=2))
-    hf_vol.commit()
-    print(f"[download] done, pinned: {json.dumps(pins)}", flush=True)
+    reserve = DOWNLOAD_RESERVE_S * DOWNLOAD_RATE_USD_S
+    log = _read_costlog()
+    if log["usd"] + reserve > BUDGET_USD:
+        raise RuntimeError(
+            f"download estimate ${reserve:.2f} would exceed ${BUDGET_USD:.2f} budget"
+        )
+    _append_costlog("reserve:download", reserve)
+    t0 = time.monotonic()
+    try:
+        api = HfApi()
+        pins = {}
+        for repo in [TARGET, *DRAFTS.values()]:
+            sha = api.model_info(repo).sha
+            print(f"[download] {repo} @ {sha}", flush=True)
+            snapshot_download(repo, revision=sha)
+            pins[repo] = sha
+        PINS.write_text(json.dumps(pins, indent=2))
+        hf_vol.commit()
+        print(f"[download] done, pinned: {json.dumps(pins)}", flush=True)
+    except Exception:
+        raise
+    else:
+        elapsed = time.monotonic() - t0
+        _append_costlog(
+            "adjust:download", elapsed * DOWNLOAD_RATE_USD_S - reserve
+        )
 
 
 @app.function(
@@ -128,23 +217,50 @@ def download_models():
     gpu=GPU_KIND,
     volumes={"/hf": hf_vol, "/results": results_vol},
     timeout=2 * 3600,
-    memory=16384,
+    cpu=CPU_CORES,
+    memory=MEMORY_GIB * 1024,
     max_containers=1,
 )
-def run_stage(stage: str, algos: list[str], modes: list[str]) -> dict:
-    assert stage in ("s0", "s1", "s1t0")
-    assert PINS.exists(), "run --action download first (pinned_revisions.json missing)"
+def run_stage(
+    stage: str,
+    algos: list[str],
+    modes: list[str],
+    run_id: str,
+    samples_per_task: int | None,
+    max_new_tokens: int | None,
+) -> dict:
+    if stage not in ("s0", "s1", "s1t0"):
+        raise ValueError(f"unknown stage: {stage}")
+    if not algos or len(set(algos)) != len(algos) or not set(algos) <= set(DRAFTS):
+        raise ValueError(f"algos must be a nonempty unique subset of {tuple(DRAFTS)}")
+    if not modes or len(set(modes)) != len(modes) or not set(modes) <= set(MODES):
+        raise ValueError(f"modes must be a nonempty unique subset of {MODES}")
+    if samples_per_task is not None and samples_per_task <= 0:
+        raise ValueError("samples_per_task must be positive")
+    if max_new_tokens is not None and max_new_tokens <= 0:
+        raise ValueError("max_new_tokens must be positive")
+    results_vol.reload()
+    hf_vol.reload()
+    if not PINS.exists():
+        raise FileNotFoundError(
+            "run --action download first (pinned_revisions.json missing)"
+        )
     pins = json.loads(PINS.read_text())
+    required_pins = {TARGET, *(DRAFTS[algo] for algo in algos)}
+    missing_pins = sorted(required_pins - set(pins))
+    if missing_pins:
+        raise ValueError(f"pinned revisions missing: {missing_pins}")
 
-    out_dir = Path(f"/results/{stage}")
+    allowed_run_id = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_"
+    if not run_id or any(ch not in allowed_run_id for ch in run_id):
+        raise ValueError(f"invalid run_id: {run_id!r}")
+    out_dir = Path("/results/runs") / run_id / stage
+    if out_dir.exists() and any(out_dir.iterdir()):
+        raise FileExistsError(f"refusing to overwrite existing artifacts: {out_dir}")
     out_dir.mkdir(parents=True, exist_ok=True)
-    for old in out_dir.iterdir():  # never mix artifacts across invocations
-        if old.is_file():
-            old.unlink()
-    results_vol.commit()
 
     reserve_s = RUN_RESERVE_S[stage]
-    reserve_usd = (reserve_s / 3600) * RATE
+    reserve_usd = reserve_s * RATE_USD_S
     env = dict(os.environ)
     env["HF_HUB_OFFLINE"] = "1"
 
@@ -155,7 +271,7 @@ def run_stage(stage: str, algos: list[str], modes: list[str]) -> dict:
             break
         for mode in modes:
             log = _read_costlog()
-            if log["usd"] + reserve_usd >= BUDGET_USD:
+            if log["usd"] + reserve_usd > BUDGET_USD:
                 statuses.append(
                     {"algo": algo, "mode": mode, "status": "SKIPPED_BUDGET"}
                 )
@@ -168,10 +284,10 @@ def run_stage(stage: str, algos: list[str], modes: list[str]) -> dict:
                 break
             # Pre-charge the reserve; adjust to actual afterwards. A hang or
             # kill leaves the reserve charged (safe overcount).
-            _append_costlog(f"reserve:{stage}:{algo}:{mode}", reserve_usd)
+            _append_costlog(f"reserve:{run_id}:{stage}:{algo}:{mode}", reserve_usd)
             cmd = [
                 sys.executable,
-                "/repo/ssd_stale_exp/runner.py",
+                "/repo/benchmark/runner.py",
                 "--algo", algo,
                 "--mode", mode,
                 "--stage", stage,
@@ -179,10 +295,21 @@ def run_stage(stage: str, algos: list[str], modes: list[str]) -> dict:
                 "--draft", DRAFTS[algo],
                 "--target-revision", pins[TARGET],
                 "--draft-revision", pins[DRAFTS[algo]],
+                "--deepspec-git-sha", DEEPSPEC_GIT_SHA,
+                "--benchmark-git-sha", BENCHMARK_GIT_SHA,
+                "--require-revisions",
                 "--require-cuda",
                 "--dtype", "fp32" if stage == "s0" else "bf16",
                 "--out-dir", str(out_dir),
             ]
+            if DEEPSPEC_GIT_DIRTY:
+                cmd.append("--deepspec-git-dirty")
+            if BENCHMARK_GIT_DIRTY:
+                cmd.append("--benchmark-git-dirty")
+            if samples_per_task is not None:
+                cmd.extend(["--samples-per-task", str(samples_per_task)])
+            if max_new_tokens is not None:
+                cmd.extend(["--max-new-tokens", str(max_new_tokens)])
             print(f"[run] {' '.join(cmd)}", flush=True)
             t0 = time.monotonic()
             try:
@@ -191,15 +318,18 @@ def run_stage(stage: str, algos: list[str], modes: list[str]) -> dict:
             except subprocess.TimeoutExpired:
                 code = -9
             dt = time.monotonic() - t0
-            actual_usd = (dt / 3600) * RATE
+            actual_usd = dt * RATE_USD_S
+            # Persist runner artifacts before the ledger helper reloads the
+            # shared volume to observe commits from other containers.
+            results_vol.commit()
             _append_costlog(
-                f"adjust:{stage}:{algo}:{mode}", round(actual_usd - reserve_usd, 4)
+                f"adjust:{run_id}:{stage}:{algo}:{mode}",
+                round(actual_usd - reserve_usd, 4),
             )
             status = {0: "OK", -9: "TIMEOUT"}.get(code, f"EXIT_{code}")
             statuses.append(
                 {"algo": algo, "mode": mode, "status": status, "seconds": round(dt, 1)}
             )
-            results_vol.commit()
             if code != 0:
                 print(f"[run] failure ({status}) — aborting stage", flush=True)
                 aborted = True
@@ -214,10 +344,14 @@ def run_stage(stage: str, algos: list[str], modes: list[str]) -> dict:
     ) * len(modes)
     report = {
         "stage": stage,
+        "run_id": run_id,
         "ok": ok,
         "statuses": statuses,
-        "total_usd": log["usd"],
+        "estimated_cumulative_usd": log["usd"],
         "budget_usd": BUDGET_USD,
+        "hard_budget_usd": HARD_BUDGET_USD,
+        "estimate_rate_usd_s": RATE_USD_S,
+        "estimate_regional_safety_factor": REGIONAL_SAFETY_FACTOR,
         "gpu": GPU_KIND,
         "pins": pins,
         "summaries": summaries,
@@ -231,24 +365,64 @@ def run_stage(stage: str, algos: list[str], modes: list[str]) -> dict:
 @app.function(image=image, volumes={"/results": results_vol}, timeout=300)
 def report() -> dict:
     out = {"costlog": _read_costlog(), "stages": {}}
-    for stage in ("s0", "s1"):
-        p = Path(f"/results/{stage}/stage_report.json")
-        if p.exists():
-            out["stages"][stage] = json.loads(p.read_text())
+    runs_root = Path("/results/runs")
+    if runs_root.exists():
+        for p in sorted(runs_root.glob("*/*/stage_report.json"))[-20:]:
+            out["stages"][str(p.parent.relative_to(runs_root))] = json.loads(
+                p.read_text()
+            )
     print(json.dumps(out)[:30000], flush=True)
     return out
 
 
 @app.local_entrypoint()
-def main(action: str = "s0", algos: str = "dflash,dspark", modes: str = ""):
+def main(
+    action: str = "s0",
+    algos: str = "dflash,dspark",
+    modes: str = "",
+    run_id: str = "",
+    samples_per_task: int | None = None,
+    max_new_tokens: int | None = None,
+):
     algo_list = [a for a in algos.split(",") if a]
     mode_list = [m for m in modes.split(",") if m] or list(MODES)
     if action == "download":
         download_models.remote()
     elif action in ("s0", "s1", "s1t0"):
-        rep = run_stage.remote(action, algo_list, mode_list)
+        if (
+            not algo_list
+            or len(set(algo_list)) != len(algo_list)
+            or not set(algo_list) <= set(DRAFTS)
+        ):
+            raise SystemExit(
+                f"algos must be a nonempty unique subset of {tuple(DRAFTS)}"
+            )
+        if (
+            not mode_list
+            or len(set(mode_list)) != len(mode_list)
+            or not set(mode_list) <= set(MODES)
+        ):
+            raise SystemExit(
+                f"modes must be a nonempty unique subset of {MODES}"
+            )
+        if samples_per_task is not None and samples_per_task <= 0:
+            raise SystemExit("samples-per-task must be positive")
+        if max_new_tokens is not None and max_new_tokens <= 0:
+            raise SystemExit("max-new-tokens must be positive")
+        resolved_run_id = run_id or time.strftime("%Y%m%d-%H%M%S")
+        rep = run_stage.remote(
+            action,
+            algo_list,
+            mode_list,
+            resolved_run_id,
+            samples_per_task,
+            max_new_tokens,
+        )
         print(json.dumps(rep.get("statuses", []), indent=2))
-        print(f"total spent: ${rep.get('total_usd')} / budget ${rep.get('budget_usd')}")
+        print(
+            "conservative estimated cumulative cost: "
+            f"${rep.get('estimated_cumulative_usd')} / budget ${rep.get('budget_usd')}"
+        )
         if not rep.get("ok"):
             raise SystemExit(1)
     elif action == "report":
